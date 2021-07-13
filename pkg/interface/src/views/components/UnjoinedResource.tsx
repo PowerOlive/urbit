@@ -1,51 +1,47 @@
+import { Box, Center, Col, Text } from '@tlon/indigo-react';
+import { joinGraph } from '@urbit/api/graph';
+import { Association, GraphConfig } from '@urbit/api/metadata';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Association } from '@urbit/api/metadata';
-import { Box, Text, Button, Col, Center } from '@tlon/indigo-react';
-import RichText from '~/views/components/RichText';
-import { Link, useHistory } from 'react-router-dom';
-import GlobalApi from '~/logic/api/global';
+import { useHistory } from 'react-router-dom';
+import { useQuery } from '~/logic/lib/useQuery';
 import { useWaitForProps } from '~/logic/lib/useWaitForProps';
+import useGraphState from '~/logic/state/graph';
+import RichText from '~/views/components/RichText';
 import {
-  StatelessAsyncButton as AsyncButton,
   StatelessAsyncButton
 } from './StatelessAsyncButton';
-import { Graphs } from '@urbit/api';
-import useGraphState from '~/logic/state/graph';
-import {useQuery} from '~/logic/lib/useQuery';
+import airlock from '~/logic/api';
 
 interface UnjoinedResourceProps {
   association: Association;
-  api: GlobalApi;
   baseUrl: string;
 }
 
 function isJoined(path: string) {
   return function (
-    props: Pick<UnjoinedResourceProps, 'graphKeys'>
+    props: { graphKeys: Set<string> }
   ) {
-
     const graphKey = path.substr(7);
     return props.graphKeys.has(graphKey);
   };
 }
 
 export function UnjoinedResource(props: UnjoinedResourceProps) {
-  const { api } = props;
   const history = useHistory();
   const { query } = useQuery();
   const rid = props.association.resource;
   const appName = props.association['app-name'];
-  
+
   const { title, description, config } = props.association.metadata;
   const graphKeys = useGraphState(state => state.graphKeys);
 
   const [loading, setLoading] = useState(false);
   const waiter = useWaitForProps({ ...props, graphKeys });
-  const app = useMemo(() => config.graph || appName, [props.association]);
+  const app = useMemo(() => (config as GraphConfig).graph || appName, [props.association]);
 
   const onJoin = async () => {
     const [, , ship, name] = rid.split('/');
-    await api.graph.joinGraph(ship, name);
+    await airlock.thread(joinGraph(ship, name));
     await waiter(isJoined(rid));
     const redir = query.get('redir') ?? `${props.baseUrl}/resource/${app}${rid}`;
     history.push(redir);
@@ -64,7 +60,6 @@ export function UnjoinedResource(props: UnjoinedResourceProps) {
         await onJoin();
         setLoading(false);
       }
-
     })();
   }, [query]);
 
@@ -75,8 +70,8 @@ export function UnjoinedResource(props: UnjoinedResourceProps) {
         p={4}
         border={1}
         borderColor="lightGray"
-        borderRadius="1"
-        gapY="3"
+        borderRadius={1}
+        gapY={3}
       >
         <Box>
           <Text>{title}</Text>

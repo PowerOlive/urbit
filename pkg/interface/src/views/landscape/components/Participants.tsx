@@ -1,39 +1,31 @@
-import React, {
-  useState,
-  useMemo,
-  useCallback,
-  ChangeEvent
-} from 'react';
 import {
-  Col,
-  Box,
-  Row,
-  Text,
-  Icon,
-  Image,
-  Action,
-  StatelessTextInput as Input
+    Action, Box, Col,
+
+    Icon,
+    Image, Row,
+
+    StatelessTextInput as Input, Text
 } from '@tlon/indigo-react';
+import { Contact, Contacts } from '@urbit/api/contacts';
+import { addTag, removeMembers, changePolicy, Group, removeTag, RoleTags } from '@urbit/api/groups';
+import { Association } from '@urbit/api/metadata';
 import _ from 'lodash';
 import f from 'lodash/fp';
+import React, {
+    ChangeEvent,
+    ReactElement, useCallback, useMemo, useState
+} from 'react';
+import { Link } from 'react-router-dom';
 import VisibilitySensor from 'react-visibility-sensor';
 import styled from 'styled-components';
-import { Link } from 'react-router-dom';
-
-import { Contact, Contacts } from '@urbit/api/contacts';
-import { Group, RoleTags } from '@urbit/api/groups';
-import { Association } from '@urbit/api/metadata';
-
+import { resourceFromPath, roleForShip } from '~/logic/lib/group';
 import { Sigil } from '~/logic/lib/sigil';
 import { cite, uxToHex } from '~/logic/lib/util';
-import { roleForShip, resourceFromPath } from '~/logic/lib/group';
-import { Dropdown } from '~/views/components/Dropdown';
-import GlobalApi from '~/logic/api/global';
-import { StatelessAsyncAction } from '~/views/components/StatelessAsyncAction';
-import useLocalState from '~/logic/state/local';
 import useContactState from '~/logic/state/contact';
 import useSettingsState, { selectCalmState } from '~/logic/state/settings';
-import {deSig} from '@urbit/api';
+import { Dropdown } from '~/views/components/Dropdown';
+import { StatelessAsyncAction } from '~/views/components/StatelessAsyncAction';
+import airlock from '~/logic/api';
 
 const TruncText = styled(Text)`
   white-space: nowrap;
@@ -54,6 +46,19 @@ const searchParticipant = (search: string) => (p: Participant) => {
   s = (s.startsWith('~')) ? s.substr(1) : s;
   return p.patp.includes(s) || p.nickname.toLowerCase().includes(s);
 };
+
+const emptyContact = (patp: string, pending: boolean): Participant => ({
+  nickname: '',
+  bio: '',
+  status: '',
+  color: '0x0',
+  avatar: null,
+  cover: null,
+  groups: [],
+  patp,
+  'last-updated': 0,
+  pending
+});
 
 function getParticipants(cs: Contacts, group: Group) {
   const contacts: Participant[] = _.flow(
@@ -85,19 +90,6 @@ function getParticipants(cs: Contacts, group: Group) {
   ] as const;
 }
 
-const emptyContact = (patp: string, pending: boolean): Participant => ({
-  nickname: '',
-  bio: '',
-  status: '',
-  color: '0x0',
-  avatar: null,
-  cover: null,
-  groups: [],
-  patp,
-  'last-updated': 0,
-  pending
-});
-
 const Tab = ({ selected, id, label, setSelected }) => (
   <Box
     py={2}
@@ -114,9 +106,7 @@ const Tab = ({ selected, id, label, setSelected }) => (
 export function Participants(props: {
   group: Group;
   association: Association;
-  api: GlobalApi;
 }): ReactElement {
-  const { api } = props;
   const tabFilters: Record<
     ParticipantsTabId,
     (p: Participant) => boolean
@@ -181,9 +171,9 @@ export function Participants(props: {
         mb={2}
         px={2}
         zIndex={1}
-        flexShrink="0"
+        flexShrink={0}
       >
-        <Row mr="4" flexShrink="0">
+        <Row mr={4} flexShrink={0}>
           <Tab
             selected={filter}
             setSelected={setFilter}
@@ -206,14 +196,14 @@ export function Participants(props: {
           />
         </Row>
       </Row>
-      <Col flexShrink="0" width="100%" height="fit-content">
-        <Row alignItems="center" bg="washedGray" borderRadius="1" px="2" my="2">
-          <Icon color="gray" icon="MagnifyingGlass" />
+      <Col flexShrink={0} width="100%" height="fit-content">
+        <Row alignItems="center" bg="washedGray" borderRadius={1} px={2} my={2}>
+          <Icon color="gray" icon="Search" />
           <Input
             maxWidth="256px"
             color="gray"
             bg="transparent"
-            border="0"
+            border={0}
             placeholder="Search Participants"
             onChange={onSearchChange}
           />
@@ -230,7 +220,6 @@ export function Participants(props: {
                 isVisible ? (
                   cs.map(c => (
                     <Participant
-                      api={api}
                       key={c.patp}
                       role={ourRole}
                       group={props.group}
@@ -255,9 +244,8 @@ function Participant(props: {
   association: Association;
   group: Group;
   role?: RoleTags;
-  api: GlobalApi;
 }) {
-  const { contact, association, group, api } = props;
+  const { contact, association, group } = props;
   const { title } = association.metadata;
   const { hideAvatars, hideNicknames } = useSettingsState(selectCalmState);
 
@@ -274,37 +262,35 @@ function Participant(props: {
 
   const onPromote = useCallback(async () => {
     const resource = resourceFromPath(association.group);
-    await api.groups.addTag(resource, { tag: 'admin' }, [`~${contact.patp}`]);
-  }, [api, association]);
+    await airlock.poke(addTag(resource, { tag: 'admin' }, [`~${contact.patp}`]));
+  }, [contact.patp, association]);
 
   const onDemote = useCallback(async () => {
     const resource = resourceFromPath(association.group);
-    await api.groups.removeTag(resource, { tag: 'admin' }, [
-      `~${contact.patp}`
-    ]);
-  }, [api, association]);
+    await airlock.poke(removeTag({ tag: 'admin' }, resource, [`~${contact.patp}`]));
+  }, [association, contact.patp]);
 
   const onBan = useCallback(async () => {
     const resource = resourceFromPath(association.group);
-    await api.groups.changePolicy(resource, {
+    await airlock.poke(changePolicy(resource, {
       open: { banShips: [`~${contact.patp}`] }
-    });
-  }, [api, association]);
+    }));
+  }, [association, contact.patp]);
 
   const onKick = useCallback(async () => {
     const resource = resourceFromPath(association.group);
     if(contact.pending) {
-      await api.groups.changePolicy(
+      await airlock.poke(changePolicy(
         resource,
         { invite: { removeInvites: [`~${contact.patp}`] } }
-      );
+      ));
     } else {
-      await api.groups.remove(resource, [`~${contact.patp}`]);
+      await airlock.poke(removeMembers(resource, [`~${contact.patp}`]));
     }
-  }, [api, contact, association]);
+  }, [contact, association]);
 
   const avatar =
-    contact?.avatar !== null && !hideAvatars ? (
+    contact?.avatar && !hideAvatars ? (
       <Image
         src={contact.avatar}
         height={32}
@@ -320,12 +306,12 @@ function Participant(props: {
 
   return (
     <>
-      <Row flexDirection={["column", "row"]} gapX="2" alignItems={["flex-start", "center"]} width="100%" justifyContent="space-between" height={["96px", "60px"]}>
-        <Row gapX="4" alignItems="center" height="100%">
+      <Row flexDirection={['column', 'row']} gapX={2} alignItems={['flex-start', 'center']} width="100%" justifyContent="space-between" height={['96px', '60px']}>
+        <Row gapX={4} alignItems="center" height="100%">
       <Box>{avatar}</Box>
-      <Col alignItems="self-start" justifyContent="center" gapY="1" height="100%" minWidth='0'>
+      <Col alignItems="self-start" justifyContent="center" gapY={1} height="100%" minWidth={0}>
         {hasNickname && (
-          <Row minWidth='0' flexShrink={1}>
+          <Row minWidth={0} flexShrink={1}>
           <TruncText title={contact.nickname} color="black">
             {contact.nickname}
           </TruncText>
@@ -338,12 +324,12 @@ function Participant(props: {
     </Row>
       <Row
         justifyContent="space-between"
-        width={["100%", "128px"]}
+        width={['100%', '128px']}
         alignItems="center"
-        gapX="4"
+        gapX={4}
       >
         <Col>
-          <Text color="lightGray" mb="1">
+          <Text color="lightGray" mb={1}>
             Role
           </Text>
           <Text>{_.capitalize(role)}</Text>
@@ -354,8 +340,8 @@ function Participant(props: {
           options={
             <Col
               bg="white"
-              border="1"
-              borderRadius="1"
+              border={1}
+              borderRadius={1}
               borderColor="lightGray"
               gapY={2}
               p={2}

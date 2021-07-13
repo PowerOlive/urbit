@@ -1,49 +1,31 @@
-import React, { Component } from 'react';
-import { RouteComponentProps } from 'react-router-dom';
-import _ from 'lodash';
-import bigInt, { BigInteger } from 'big-integer';
-
-import { Col } from '@tlon/indigo-react';
+import { Col, Text } from '@tlon/indigo-react';
 import {
-  Patp,
-  Contacts,
-  Association,
-  Associations,
-  Group,
-  Groups,
-  Graph
+  Graph,
+  GraphNode, Post
 } from '@urbit/api';
-
-import GlobalApi from '~/logic/api/global';
-
+import bigInt, { BigInteger } from 'big-integer';
+import React, { Component } from 'react';
+import { GraphScroller } from '~/views/components/GraphScroller';
 import VirtualScroller from '~/views/components/VirtualScroller';
+import ChatMessage from './ChatMessage';
+import UnreadNotice from './UnreadNotice';
 
-import ChatMessage, { MessagePlaceholder } from './ChatMessage';
-import { UnreadNotice } from './unread-notice';
-import withState from '~/logic/lib/withState';
-import useGroupState from '~/logic/state/group';
-import useMetadataState from '~/logic/state/metadata';
-import useGraphState from '~/logic/state/graph';
-
-const INITIAL_LOAD = 20;
-const DEFAULT_BACKLOG_SIZE = 100;
 const IDLE_THRESHOLD = 64;
-const MAX_BACKLOG_SIZE = 1000;
 
-type ChatWindowProps = RouteComponentProps<{
-  ship: Patp;
-  station: string;
-}> & {
+type ChatWindowProps = {
   unreadCount: number;
   graph: Graph;
   graphSize: number;
-  association: Association;
-  group: Group;
-  ship: Patp;
-  station: any;
-  api: GlobalApi;
+  station?: unknown;
+  fetchMessages: (newer: boolean) => Promise<boolean>;
   scrollTo?: BigInteger;
   onReply: (msg: Post) => void;
+  onDelete: (msg: Post) => void;
+  dismissUnread: () => void;
+  pendingSize?: number;
+  showOurContact: boolean;
+  getPermalink: (index: BigInteger) => string | undefined;
+  isAdmin: boolean;
 };
 
 interface ChatWindowState {
@@ -53,14 +35,18 @@ interface ChatWindowState {
   unreadIndex: BigInteger;
 }
 
+interface RendererProps {
+  index: bigInt.BigInteger;
+  scrollWindow: any;
+}
+
 const virtScrollerStyle = { height: '100%' };
 
 class ChatWindow extends Component<
   ChatWindowProps,
   ChatWindowState
 > {
-  private virtualList: VirtualScroller | null;
-  private unreadMarkerRef: React.RefObject<HTMLDivElement>;
+  private virtualList: VirtualScroller<bigInt.BigInteger, GraphNode> | null;
   private prevSize = 0;
   private unreadSet = false;
 
@@ -72,33 +58,25 @@ class ChatWindow extends Component<
     this.state = {
       fetchPending: false,
       idle: true,
-      initialized: false,
+      initialized: true,
       unreadIndex: bigInt.zero
     };
 
-    this.dismissUnread = this.dismissUnread.bind(this);
     this.scrollToUnread = this.scrollToUnread.bind(this);
     this.handleWindowBlur = this.handleWindowBlur.bind(this);
     this.handleWindowFocus = this.handleWindowFocus.bind(this);
     this.stayLockedIfActive = this.stayLockedIfActive.bind(this);
 
     this.virtualList = null;
-    this.unreadMarkerRef = React.createRef();
     this.prevSize = props.graph.size;
   }
 
   componentDidMount() {
     this.calculateUnreadIndex();
-    setTimeout(() => {
-      this.setState({ initialized: true }, () => {
-        if(this.props.scrollTo) {
-          this.virtualList.scrollToIndex(this.props.scrollTo);
-
-        }
-
-      });
-      
-    }, this.INITIALIZATION_MAX_TIME);
+    if(this.props.scrollTo) {
+      this.virtualList!.scrollLocked = false;
+      this.virtualList!.scrollToIndex(this.props.scrollTo);
+    }
   }
 
   calculateUnreadIndex() {
@@ -107,38 +85,48 @@ class ChatWindow extends Component<
     if(state.unreadIndex.neq(bigInt.zero)) {
       return;
     }
-    const unreadIndex = graph.keys()[unreadCount];
+    let unreadIndex = graph.keys()[unreadCount];
     if (!unreadIndex || unreadCount === 0) {
-      this.setState({
-        unreadIndex: bigInt.zero
-      });
+      if(state.unreadIndex.neq(bigInt.zero)) {
+        this.setState({
+          unreadIndex: bigInt.zero
+        });
+      }
       return;
     }
+    /* Loop until we can find a index with an actual post */
+    let attemptedCount = unreadCount;
+    while(attemptedCount > 0 && typeof graph.get(unreadIndex)?.post === 'string') {
+      attemptedCount--;
+      unreadIndex = graph.keys()[attemptedCount];
+    }
+
     this.setState({
       unreadIndex
     });
   }
 
-  dismissedInitialUnread() {
+  dismissedInitialUnread(): boolean {
     const { unreadCount, graph } = this.props;
-  
-    return this.state.unreadIndex.neq(bigInt.zero) &&
-      this.state.unreadIndex.neq(graph.keys()?.[unreadCount]?.[0] ?? bigInt.zero);
+
+    return this.state.unreadIndex.eq(bigInt.zero)
+      ? unreadCount > graph.size
+      : this.state.unreadIndex.neq(graph.keys()?.[unreadCount]?.[0] ?? bigInt.zero);
   }
 
-  handleWindowBlur() {
+  handleWindowBlur(): void {
     this.setState({ idle: true });
   }
 
-  handleWindowFocus() {
+  handleWindowFocus(): void {
     this.setState({ idle: false });
     if (this.virtualList?.window?.scrollTop === 0) {
-      this.dismissUnread();
+      this.props.dismissUnread();
     }
   }
 
-  componentDidUpdate(prevProps: ChatWindowProps, prevState) {
-    const { history, graph, unreadCount, graphSize, station } = this.props;
+  componentDidUpdate(prevProps: ChatWindowProps): void {
+    const { unreadCount, graphSize, station } = this.props;
     if(unreadCount === 0 && prevProps.unreadCount !== unreadCount) {
       this.unreadSet = true;
     }
@@ -150,10 +138,9 @@ class ChatWindow extends Component<
       }
       if(this.unreadSet &&
         this.dismissedInitialUnread() &&
-        this.virtualList?.startOffset() < 5) {
-        this.dismissUnread();
+        this.virtualList!.startOffset() < 5) {
+        this.props.dismissUnread();
       }
-
     }
 
     if (unreadCount > prevProps.unreadCount) {
@@ -166,10 +153,10 @@ class ChatWindow extends Component<
     }
   }
 
-  stayLockedIfActive() {
+  stayLockedIfActive(): void {
     if (this.virtualList && !this.state.idle) {
       this.virtualList.resetScroll();
-      this.dismissUnread();
+      this.props.dismissUnread();
     }
   }
 
@@ -179,7 +166,7 @@ class ChatWindow extends Component<
     }
   }
 
-  scrollToUnread() {
+  scrollToUnread(): void {
     const { unreadIndex } = this.state;
     if (unreadIndex.eq(bigInt.zero)) {
       return;
@@ -188,86 +175,38 @@ class ChatWindow extends Component<
     this.virtualList?.scrollToIndex(this.state.unreadIndex);
   }
 
-  dismissUnread() {
-    const { association } = this.props;
-    if (this.state.fetchPending) return;
-    if (this.props.unreadCount === 0) return;
-    this.props.api.hark.markCountAsRead(association, '/', 'message');
-  }
-
-  setActive = () => { 
-    if(this.state.idle) {
-      this.setState({ idle: false });
-    }
-  }
-
-  fetchMessages = async (newer: boolean): Promise<boolean> => {
-    const { api, station, graph } = this.props;
-    const pageSize = 100;
-
-    const [, , ship, name] = station.split('/');
-    const expectedSize = graph.size + pageSize;
-    if (newer) {
-      const [index] = graph.peekLargest()!;
-      await api.graph.getYoungerSiblings(
-        ship,
-        name,
-        pageSize,
-        `/${index.toString()}`
-      );
-      return expectedSize !== graph.size;
-    } else {
-      const [index] = graph.peekSmallest()!;
-      await api.graph.getOlderSiblings(ship, name, pageSize, `/${index.toString()}`);
-      const done = expectedSize !== graph.size;
-      if(done) {
-        this.calculateUnreadIndex();
-      }
-      return done;
-    }
-  }
-
-  onScroll = ({ scrollTop, scrollHeight, windowHeight }) => {
+  onScroll = ({ scrollTop }) => {
     if (!this.state.idle && scrollTop > IDLE_THRESHOLD) {
       this.setState({ idle: true });
     }
   }
 
-
-  renderer = React.forwardRef(({ index, scrollWindow }, ref) => {
+  renderer = React.forwardRef(({ index, scrollWindow }: RendererProps, ref) => {
     const {
-      api,
-      association,
-      group,
       showOurContact,
       graph,
-      history,
-      groups,
-      associations,
-      onReply
+      onReply,
+      onDelete,
+      getPermalink,
+      dismissUnread,
+      isAdmin
     } = this.props;
-    const { unreadMarkerRef } = this;
+    const permalink = getPermalink(index);
     const messageProps = {
-      association,
-      group,
       showOurContact,
-      unreadMarkerRef,
-      history,
-      api,
-      groups,
-      associations,
-      onReply
+      onReply,
+      onDelete,
+      permalink,
+      dismissUnread,
+      isAdmin
     };
 
     const msg = graph.get(index)?.post;
-    if (!msg) return null;
-    if (!this.state.initialized) {
+    if (!msg || typeof msg === 'string') {
       return (
-        <MessagePlaceholder
-          key={index.toString()}
-          height='64px'
-          index={index}
-        />
+        <Text pl="44px" pt="1" pb="1" gray display="block">
+          This message has been deleted.
+        </Text>
       );
     }
     const isPending: boolean = 'pending' in msg && Boolean(msg.pending);
@@ -275,10 +214,10 @@ class ChatWindow extends Component<
       graph.peekLargest()?.[0] ?? bigInt.zero
     );
     const highlighted = index.eq(this.props.scrollTo ?? bigInt.zero);
-    const keys = graph.keys().reverse();
-    const graphIdx = keys.findIndex((idx) => idx.eq(index));
-    const prevIdx = keys[graphIdx + 1];
-    const nextIdx = keys[graphIdx - 1];
+    const keys = graph.keys();
+    const graphIdx = keys.findIndex(idx => idx.eq(index));
+    const prevIdx = keys[graphIdx - 1];
+    const nextIdx = keys[graphIdx + 1];
     const isLastRead: boolean = this.state.unreadIndex.eq(index);
     const props = {
       highlighted,
@@ -291,6 +230,7 @@ class ChatWindow extends Component<
     };
 
     return (
+      // @ts-ignore virt typings
       <ChatMessage
         key={index.toString()}
         ref={ref}
@@ -304,36 +244,15 @@ class ChatWindow extends Component<
   render() {
     const {
       unreadCount,
-      api,
-      association,
-      group,
       graph,
-      history,
-      groups,
-      associations,
-      showOurContact,
-      pendingSize,
-      onReply,
+      pendingSize = 0
     } = this.props;
 
-    const unreadMarkerRef = this.unreadMarkerRef;
-    const messageProps = {
-      association,
-      group,
-      unreadMarkerRef,
-      history,
-      api,
-      associations
-    };
     const unreadMsg = graph.get(this.state.unreadIndex);
-
-    // hack to force a re-render when we toggle showing contact
-    const contactsModified =
-      showOurContact ? 0 : 100;
 
     return (
       <Col height='100%' overflow='hidden' position='relative'>
-        { this.dismissedInitialUnread() && 
+        { this.dismissedInitialUnread() &&
          (<UnreadNotice
           unreadCount={unreadCount}
           unreadMsg={
@@ -343,34 +262,29 @@ class ChatWindow extends Component<
               ? false
               : unreadMsg
           }
-          dismissUnread={this.dismissUnread}
+          dismissUnread={this.props.dismissUnread}
           onClick={this.scrollToUnread}
-        />)}
-        <VirtualScroller
+         />)}
+        <GraphScroller
           ref={(list) => {
             this.virtualList = list;
           }}
           offset={unreadCount}
           origin='bottom'
           style={virtScrollerStyle}
-          onStartReached={this.setActive}
           onBottomLoaded={this.onBottomLoaded}
+          // @ts-ignore paging @liam-fitzgerald on virtualscroller props
           onScroll={this.onScroll}
           data={graph}
           size={graph.size}
-          pendingSize={pendingSize + contactsModified}
-          id={association.resource}
+          pendingSize={pendingSize}
           averageHeight={22}
           renderer={this.renderer}
-          loadRows={this.fetchMessages}
+          loadRows={this.props.fetchMessages}
         />
       </Col>
     );
   }
 }
 
-export default withState(ChatWindow, [
-  [useGroupState, ['groups']],
-  [useMetadataState, ['associations']],
-  [useGraphState, ['pendingSize']]
-]);
+export default ChatWindow;

@@ -1,45 +1,21 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useHistory } from "react-router-dom";
+import { JoinRequest } from '@urbit/api';
+import { Invite } from '@urbit/api/invite';
+import React  from 'react';
+import { usePreview } from '~/logic/state/metadata';
+import { GroupInvite } from './Group';
 
-import {
-  MetadataUpdatePreview,
-  Contacts,
-  JoinRequests,
-  Groups,
-  Associations,
-  JoinRequest,
-} from "@urbit/api";
-import { Invite } from "@urbit/api/invite";
-import GlobalApi from "~/logic/api/global";
-import { GroupInvite } from "./Group";
-
-interface InviteItemProps {
+export interface InviteItemProps {
   invite?: Invite;
   resource: string;
   pendingJoin?: JoinRequest;
   app?: string;
   uid?: string;
-  api: GlobalApi;
 }
 
-
-
 export function InviteItem(props: InviteItemProps) {
-  const [preview, setPreview] = useState<MetadataUpdatePreview | null>(null);
-  const { pendingJoin, invite, resource, uid, app, api } = props;
+  const { pendingJoin, invite, resource, uid, app } = props;
 
-  useEffect(() => {
-    if (!app || app === "groups") {
-      (async () => {
-        setPreview(await api.metadata.preview(resource));
-      })();
-      return () => {
-        setPreview(null);
-      };
-    } else {
-      return () => {};
-    }
-  }, [invite]);
+  const { preview } = usePreview(resource);
 
   if (pendingJoin?.hidden) {
     return null;
@@ -48,7 +24,6 @@ export function InviteItem(props: InviteItemProps) {
   return (
     <GroupInvite
       resource={resource}
-      api={api}
       preview={preview}
       invite={invite}
       status={pendingJoin}

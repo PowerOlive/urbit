@@ -1,27 +1,62 @@
-import React, { ReactElement, ReactNode, useRef } from 'react';
-import { Icon, Box, Col, Text } from '@tlon/indigo-react';
-import styled from 'styled-components';
-import { Link } from 'react-router-dom';
-import urbitOb from 'urbit-ob';
-
+import _ from 'lodash';
+import { Box, Col, Icon, Text } from '@tlon/indigo-react';
 import { Association } from '@urbit/api/metadata';
-
-import RichText from '~/views/components/RichText';
-import GlobalApi from '~/logic/api/global';
+import { AppName } from '@urbit/api';
+import React, { ReactElement, ReactNode, useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
+import styled from 'styled-components';
+import urbitOb from 'urbit-ob';
 import { isWriter } from '~/logic/lib/group';
+import { useResize } from '~/logic/lib/useResize';
 import { getItemTitle } from '~/logic/lib/util';
 import useContactState from '~/logic/state/contact';
+import useSettingsState, { selectCalmState } from '~/logic/state/settings';
 import useGroupState from '~/logic/state/group';
+import { Dropdown } from '~/views/components/Dropdown';
+import RichText from '~/views/components/RichText';
+import { MessageInvite } from '~/views/landscape/components/MessageInvite';
 
 const TruncatedText = styled(RichText)`
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  display: none;
+  @media screen and (min-width: ${p => p.theme.breakpoints[0]}) {
+    display: inline;
+  }
 `;
+
+const participantNames = (str: string, contacts, hideNicknames) => {
+  if (_.includes(str, ',') && _.startsWith(str, '~')) {
+    const names = _.split(str, ', ');
+    return names.map((name, idx) => {
+      if (urbitOb.isValidPatp(name)) {
+        if (contacts[name]?.nickname && !hideNicknames)
+          return (
+            <Text key={name} fontSize={2} fontWeight='600'>
+              {contacts[name]?.nickname}
+              {idx + 1 != names.length ? ', ' : null}
+            </Text>
+          );
+        return (
+          <Text key={name} mono fontSize={2} fontWeight='600'>
+            {name}
+            <Text fontSize={2} fontWeight='600'>
+              {idx + 1 != names.length ? ', ' : null}
+            </Text>
+          </Text>
+        );
+      } else {
+        return name;
+      }
+    });
+  } else {
+    return str;
+  }
+};
 
 type ResourceSkeletonProps = {
   association: Association;
-  api: GlobalApi;
   baseUrl: string;
   children: ReactNode;
   title?: string;
@@ -30,12 +65,16 @@ type ResourceSkeletonProps = {
 
 export function ResourceSkeleton(props: ResourceSkeletonProps): ReactElement {
   const { association, baseUrl, children } = props;
-  const app = association?.metadata?.config?.graph || association['app-name'];
+  let app = association['app-name'];
+  if (association?.metadata?.config && 'graph' in association.metadata.config) {
+    app = association.metadata.config.graph as AppName;
+  }
   const rid = association.resource;
   const groups = useGroupState(state => state.groups);
+  const { hideNicknames } = useSettingsState(selectCalmState);
   const group = groups[association.group];
   let workspace = association.group;
-  const actionsRef = useRef(null);
+  const [actionsWidth, setActionsWidth] = useState(0);
 
   if (group?.hidden && app === 'chat') {
     workspace = '/messages';
@@ -47,15 +86,15 @@ export function ResourceSkeleton(props: ResourceSkeletonProps): ReactElement {
     ? getItemTitle(association)
     : association?.metadata?.title;
 
-  let recipient = "";
+  let recipient = '';
 
   const contacts = useContactState(state => state.contacts);
 
-  if (urbitOb.isValidPatp(title)) {
+  if (urbitOb.isValidPatp(title) && !hideNicknames) {
     recipient = title;
     title = (contacts?.[title]?.nickname) ? contacts[title].nickname : title;
   } else {
-    recipient = Array.from(group ? group.members : []).map(e => `~${e}`).join(", ")
+    recipient = Array.from(group ? group.members : []).map(e => `~${e}`).join(', ');
   }
 
   const [, , ship, resource] = rid.split('/');
@@ -69,15 +108,15 @@ export function ResourceSkeleton(props: ResourceSkeletonProps): ReactElement {
     canWrite = isOwn;
   }
 
-  const BackLink = () => (
+  const backLink = (
     <Box
       borderRight={1}
       borderRightColor='gray'
       pr={3}
-      fontSize='1'
+      fontSize={1}
       mr='12px'
-      my='1'
-      flexShrink='0'
+      my={1}
+      flexShrink={0}
       display={['block','none']}
     >
       <Link to={`/~landscape${workspace}`}>
@@ -86,69 +125,93 @@ export function ResourceSkeleton(props: ResourceSkeletonProps): ReactElement {
     </Box>
   );
 
-  const Title = () => (
+  const titleText = (
     <Text
       mono={urbitOb.isValidPatp(title)}
-      fontSize='2'
+      fontSize={2}
       fontWeight='600'
       textOverflow='ellipsis'
       overflow='hidden'
       whiteSpace='nowrap'
-      minWidth='0'
+      minWidth={0}
       maxWidth={association?.metadata?.description ? ['100%', '50%'] : 'none'}
       mr='2'
       ml='1'
-      flexShrink={['1', '0']}
+      flexShrink={1}
     >
-      {title}
+      {workspace === '/messages' && !urbitOb.isValidPatp(title)
+        ? participantNames(title, contacts, hideNicknames)
+        : title}
     </Text>
   );
 
-  const Description = () => (
+  const description = (
     <TruncatedText
       display={['none','inline']}
-      mono={workspace === '/messages' && !urbitOb.isValidPatp(title)}
+      mono={workspace === '/messages' && !association?.metadata?.description}
       color='gray'
-      mb='0'
-      minWidth='0'
+      mb={0}
+      minWidth={0}
       maxWidth='50%'
-      flexShrink='1'
+      flexShrink={1}
       disableRemoteContent
     >
-      {workspace === '/messages'
+      {workspace === '/messages' && !association?.metadata?.description
         ? recipient
         : association?.metadata?.description}
     </TruncatedText>
   );
 
-  const WriterControls = () => (
-    <Link to={resourcePath('/new')}>
-      <Text bold pr='3' color='blue'>
-        + New Post
-      </Text>
-    </Link>
-  );
+  const extraControls =
+    (workspace === '/messages' && isOwn && !resource.startsWith('dm-')) ?  (
+        <Dropdown
+          flexShrink={0}
+          dropWidth='300px'
+          width='auto'
+          alignY='top'
+          alignX='right'
+          options={
+            <Col
+              backgroundColor='white'
+              border={1}
+              borderRadius={2}
+              borderColor='lightGray'
+              color='washedGray'
+              boxShadow='0px 0px 0px 3px'
+            >
+              <MessageInvite association={association} />
+            </Col>
+          }
+        >
+          <Text bold pr='3' color='blue'>
+            + Add Ship
+          </Text>
+        </Dropdown>
+      ) : canWrite ? (
+        <Link to={resourcePath('/new')}>
+          <Text bold pr='3' color='blue'>
+            + New Post
+          </Text>
+        </Link>
+      ) : null;
 
-  const MenuControl = () => (
+  const menuControl = (
     <Link to={`${baseUrl}/settings`}>
-      <Icon icon='Menu' color='gray' pr='2' />
+      <Icon icon='Menu' color='gray' pr={2} />
     </Link>
   );
 
-  const actRef = actionsRef.current;
-  let actionsWidth = 0;
-
-  if (actRef) {
-    actionsWidth = actRef.clientWidth;
-  }
+  const bind = useResize<HTMLDivElement>(useCallback((entry) => {
+    setActionsWidth(entry.borderBoxSize[0].inlineSize);
+  }, []));
 
   return (
     <Col width='100%' height='100%' overflow='hidden'>
       <Box
-        flexShrink='0'
+        flexShrink={0}
         height='48px'
-        py='2'
-        px='2'
+        py={2}
+        px={2}
         borderBottom={1}
         borderBottomColor='lightGray'
         display='flex'
@@ -159,21 +222,22 @@ export function ResourceSkeleton(props: ResourceSkeletonProps): ReactElement {
           display='flex'
           alignItems='baseline'
           width={`calc(100% - ${actionsWidth}px - 16px)`}
-          flexShrink='0'
+          flexShrink={1}
+          minWidth={0}
         >
-          <BackLink />
-          <Title />
-          <Description />
+          {backLink}
+          {titleText}
+          {description}
         </Box>
         <Box
           ml={3}
           display='flex'
           alignItems='center'
-          flexShrink='0'
-          ref={actionsRef}
+          flexShrink={0}
+          {...bind}
         >
-          {canWrite && <WriterControls />}
-          <MenuControl />
+          {extraControls}
+          {menuControl}
         </Box>
       </Box>
       {children}

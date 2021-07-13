@@ -1,15 +1,13 @@
-import React from 'react';
 import { Box, Col, Text } from '@tlon/indigo-react';
-import * as Yup from 'yup';
-import { Formik, FormikHelpers, Form } from 'formik';
+import { Association, groupifyGraph, AppName } from '@urbit/api';
+import { Form, Formik, FormikHelpers } from 'formik';
+import React from 'react';
 import { useHistory } from 'react-router-dom';
-
-import { Groups, Associations, Association } from '@urbit/api';
-
-import GlobalApi from '~/logic/api/global';
-import GroupSearch from '~/views/components/GroupSearch';
-import { AsyncButton } from '~/views/components/AsyncButton';
+import * as Yup from 'yup';
 import useGroupState from '~/logic/state/group';
+import { AsyncButton } from '~/views/components/AsyncButton';
+import GroupSearch from '~/views/components/GroupSearch';
+import airlock from '~/logic/api';
 
 const formSchema = Yup.object({
   group: Yup.string().nullable()
@@ -20,7 +18,6 @@ interface FormSchema {
 }
 
 interface GroupifyFormProps {
-  api: GlobalApi;
   association: Association;
 }
 
@@ -34,12 +31,15 @@ export function GroupifyForm(props: GroupifyFormProps) {
     try {
       const rid = association.resource;
       const [, , ship, name] = rid;
-      await props.api.graph.groupifyGraph(
+      await airlock.thread(groupifyGraph(
         ship,
         name,
         values.group?.toString() || undefined
-      );
-      const mod = association.metadata?.config?.graph || association['app-name'];
+      ));
+      let mod = association['app-name'];
+      if (association?.metadata?.config && 'graph' in association.metadata.config) {
+        mod = association.metadata.config.graph as AppName;
+      }
       const newGroup = values.group || association.group;
       history.push(`/~landscape${newGroup}/resource/${mod}${rid}`);
       actions.setStatus({ success: null });
@@ -69,7 +69,7 @@ export function GroupifyForm(props: GroupifyFormProps) {
       onSubmit={onGroupify}
     >
       <Form>
-        <Col flexShrink="0" gapY="4" maxWidth="512px">
+        <Col flexShrink={0} gapY={4} maxWidth="512px">
           <Box>
             <Text fontWeight="500">Groupify this channel</Text>
           </Box>

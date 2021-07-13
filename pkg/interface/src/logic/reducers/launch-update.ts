@@ -1,55 +1,19 @@
 import _ from 'lodash';
-import { LaunchUpdate, WeatherState } from '~/types/launch-update';
-import { Cage } from '~/types/cage';
-import useLaunchState, { LaunchState } from '../state/launch';
-import { compose } from 'lodash/fp';
-import { reduceState } from '../state/base';
+import { LaunchUpdate } from '~/types/launch-update';
+import { LaunchState as State } from '../state/launch';
+import { BaseState } from '../state/base';
 
-export default class LaunchReducer {
-  reduce(json: Cage) {
-    const data = _.get(json, 'launch-update', false);
-    if (data) {
-      reduceState<LaunchState, LaunchUpdate>(useLaunchState, data, [
-        initial,
-        changeFirstTime,
-        changeOrder,
-        changeFirstTime,
-        changeIsShown,
-      ]);
-    }
-
-    const weatherData: WeatherState = _.get(json, 'weather', false);
-    if (weatherData) {
-      useLaunchState.getState().set(state => {
-        state.weather = weatherData;
-      });
-    }
-
-    const locationData = _.get(json, 'location', false);
-    if (locationData) {
-      useLaunchState.getState().set(state => {
-        state.userLocation = locationData;
-      });
-    }
-
-    const baseHash = _.get(json, 'baseHash', false);
-    if (baseHash) {
-      useLaunchState.getState().set(state => {
-        state.baseHash = baseHash;
-      })
-    }
-  }
-}
+type LaunchState = State & BaseState<State>;
 
 export const initial = (json: LaunchUpdate, state: LaunchState): LaunchState => {
   const data = _.get(json, 'initial', false);
   if (data) {
-    Object.keys(data).forEach(key => {
+    Object.keys(data).forEach((key) => {
       state[key] = data[key];
     });
   }
   return state;
-}
+};
 
 export const changeFirstTime = (json: LaunchUpdate, state: LaunchState): LaunchState => {
   const data = _.get(json, 'changeFirstTime', false);
@@ -57,7 +21,7 @@ export const changeFirstTime = (json: LaunchUpdate, state: LaunchState): LaunchS
     state.firstTime = data;
   }
   return state;
-}
+};
 
 export const changeOrder = (json: LaunchUpdate, state: LaunchState): LaunchState => {
   const data = _.get(json, 'changeOrder', false);
@@ -65,7 +29,7 @@ export const changeOrder = (json: LaunchUpdate, state: LaunchState): LaunchState
     state.tileOrdering = data;
   }
   return state;
-}
+};
 
 export const changeIsShown = (json: LaunchUpdate, state: LaunchState): LaunchState => {
   const data = _.get(json, 'changeIsShown', false);
@@ -76,4 +40,12 @@ export const changeIsShown = (json: LaunchUpdate, state: LaunchState): LaunchSta
     }
   }
   return state;
-}
+};
+
+export const reduce = [
+  initial,
+  changeFirstTime,
+  changeOrder,
+  changeFirstTime,
+  changeIsShown
+];

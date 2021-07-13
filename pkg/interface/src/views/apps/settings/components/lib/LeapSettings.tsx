@@ -1,30 +1,28 @@
-import React, { useCallback } from "react";
-import _ from "lodash";
 import {
-  Col,
-  Text,
-  ManagedToggleSwitchField as Toggle,
-  ManagedCheckboxField,
-  BaseInput,
-} from "@tlon/indigo-react";
-import { Form, FormikHelpers, useField, useFormikContext } from "formik";
-import { FormikOnBlur } from "~/views/components/FormikOnBlur";
-import { BackButton } from "./BackButton";
-import GlobalApi from "~/logic/api/global";
+    Col,
+
+    ManagedCheckboxField, Text
+} from '@tlon/indigo-react';
+import { Form, useFormikContext } from 'formik';
+import { putEntry } from '@urbit/api/settings';
+import _ from 'lodash';
+import React from 'react';
+import useSettingsState, { selectSettingsState } from '~/logic/state/settings';
 import {
-  NotificationGraphConfig,
-  LeapCategories,
-  leapCategories,
-} from "~/types";
-import useSettingsState, { selectSettingsState } from "~/logic/state/settings";
-import { ShuffleFields } from "~/views/components/ShuffleFields";
+    LeapCategories,
+    leapCategories
+} from '~/types';
+import { FormikOnBlur } from '~/views/components/FormikOnBlur';
+import { ShuffleFields } from '~/views/components/ShuffleFields';
+import { BackButton } from './BackButton';
+import airlock from '~/logic/api';
 
 const labels: Record<LeapCategories, string> = {
-  mychannel: "My Channel",
-  updates: "Notifications",
-  profile: "Profile",
-  messages: "Messages",
-  logout: "Log Out",
+  mychannel: 'My Channels',
+  updates: 'Notifications',
+  profile: 'Profile',
+  messages: 'Messages',
+  logout: 'Log Out'
 };
 
 interface FormSchema {
@@ -35,8 +33,6 @@ function CategoryCheckbox(props: { index: number }) {
   const { index } = props;
   const { values } = useFormikContext<FormSchema>();
   const cats = values.categories;
-  const catNameId = `categories[${index}].category`;
-  const [field] = useField(catNameId);
 
   const { category } = cats[index];
   const label = labels[category];
@@ -46,23 +42,21 @@ function CategoryCheckbox(props: { index: number }) {
   );
 }
 
-const settingsSel = selectSettingsState(["leap", "set"]);
+const settingsSel = selectSettingsState(['leap', 'set']);
 
-export function LeapSettings(props: { api: GlobalApi; }) {
-  const { api } = props;
-  const { leap, set: setSettingsState } = useSettingsState(settingsSel);
+export function LeapSettings() {
+  const { leap } = useSettingsState(settingsSel);
   const categories = leap.categories as LeapCategories[];
   const missing = _.difference(leapCategories, categories);
-  console.log(categories);
 
   const initialValues = {
     categories: [
-      ...categories.map((cat) => ({
+      ...categories.map(cat => ({
         category: cat,
-        display: true,
+        display: true
       })),
-      ...missing.map((cat) => ({ category: cat, display: false })),
-    ],
+      ...missing.map(cat => ({ category: cat, display: false }))
+    ]
   };
 
   const onSubmit = async (values: FormSchema) => {
@@ -70,15 +64,15 @@ export function LeapSettings(props: { api: GlobalApi; }) {
       (acc, { display, category }) => (display ? [...acc, category] : acc),
       [] as LeapCategories[]
     );
-    await api.settings.putEntry('leap', 'categories', result);
+    await airlock.poke(putEntry('leap', 'categories', result));
   };
 
   return (
     <>
-    <BackButton/>
-    <Col p="5" pt="4" gapY="5">
-      <Col gapY="1" mt="0">
-        <Text fontSize="2" fontWeight="medium">
+    <BackButton />
+    <Col p={5} pt={4} gapY={5}>
+      <Col gapY={1} mt={0}>
+        <Text fontSize={2} fontWeight="medium">
           Leap
         </Text>
         <Text gray>
@@ -87,7 +81,7 @@ export function LeapSettings(props: { api: GlobalApi; }) {
       </Col>
       <FormikOnBlur initialValues={initialValues} onSubmit={onSubmit}>
         <Form>
-          <Col gapY="4">
+          <Col gapY={4}>
             <Text fontWeight="medium">
               Customize default Leap sections
             </Text>

@@ -1,20 +1,17 @@
-import React from 'react';
-
 import {
-  Col,
-  Label,
-  BaseLabel,
-  Text
-} from '@tlon/indigo-react';
-import { GroupNotificationsConfig } from '@urbit/api';
-import { Association } from '@urbit/api/metadata';
+    BaseLabel, Col,
+    Label,
 
-import GlobalApi from '~/logic/api/global';
-import { StatelessAsyncToggle } from '~/views/components/StatelessAsyncToggle';
+    Text
+} from '@tlon/indigo-react';
+import { ignoreGroup, listenGroup } from '@urbit/api';
+import { Association } from '@urbit/api/metadata';
+import React from 'react';
 import useHarkState from '~/logic/state/hark';
+import { StatelessAsyncToggle } from '~/views/components/StatelessAsyncToggle';
+import airlock from '~/logic/api';
 
 export function GroupPersonalSettings(props: {
-  api: GlobalApi;
   association: Association;
 }) {
   const groupPath = props.association.group;
@@ -24,13 +21,13 @@ export function GroupPersonalSettings(props: {
   const watching = notificationsGroupConfig.findIndex(g => g === groupPath) !== -1;
 
   const onClick = async () => {
-    const func = !watching ? 'listenGroup' : 'ignoreGroup';
-    await props.api.hark[func](groupPath);
+    const func = !watching ? listenGroup : ignoreGroup;
+    await airlock.poke(func(groupPath));
   };
 
   return (
-    <Col px="4" pb="4" gapY="4">
-      <Text pt="4" fontWeight="600" id="notifications" fontSize="2">Group Notifications</Text>
+    <Col px={4} pb={4} gapY={4}>
+      <Text pt={4} fontWeight="600" id="notifications" fontSize={2}>Group Notifications</Text>
       <BaseLabel
         htmlFor="asyncToggle"
         display="flex"
@@ -39,7 +36,7 @@ export function GroupPersonalSettings(props: {
         <StatelessAsyncToggle selected={watching} onClick={onClick} />
         <Col>
           <Label>Notify me on group activity</Label>
-          <Label mt="2" gray>Send me notifications when this group changes</Label>
+          <Label mt={2} gray>Send me notifications when this group changes</Label>
         </Col>
       </BaseLabel>
     </Col>

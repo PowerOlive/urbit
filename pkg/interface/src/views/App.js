@@ -1,42 +1,34 @@
-import { hot } from 'react-hot-loader/root';
-import 'react-hot-loader';
-import * as React from 'react';
-import { BrowserRouter as Router, withRouter } from 'react-router-dom';
-import styled, { ThemeProvider, createGlobalStyle } from 'styled-components';
-import { sigil as sigiljs, stringRenderer } from '@tlon/sigil-js';
-import Helmet from 'react-helmet';
-
-import Mousetrap from 'mousetrap';
-import 'mousetrap-global-bind';
-
-import './css/indigo-static.css';
-import './css/fonts.css';
-import './apps/chat/css/custom.css';
-import './landscape/css/custom.css';
-
-import light from '@tlon/indigo-light';
 import dark from '@tlon/indigo-dark';
+import light from '@tlon/indigo-light';
+import Mousetrap from 'mousetrap';
+import shallow from 'zustand/shallow';
+import 'mousetrap-global-bind';
+import * as React from 'react';
+import Helmet from 'react-helmet';
+import 'react-hot-loader';
+import { hot } from 'react-hot-loader/root';
+import { BrowserRouter as Router, withRouter } from 'react-router-dom';
+import styled, { ThemeProvider } from 'styled-components';
+import gcpManager from '~/logic/lib/gcpManager';
+import { favicon, svgDataURL } from '~/logic/lib/util';
+import withState from '~/logic/lib/withState';
+import useContactState from '~/logic/state/contact';
+import useLocalState from '~/logic/state/local';
+import useSettingsState from '~/logic/state/settings';
+import useGraphState from '~/logic/state/graph';
+import { ShortcutContextProvider } from '~/logic/lib/shortcutContext';
 
-import { Text, Anchor, Row } from '@tlon/indigo-react';
-
-import { Content } from './landscape/components/Content';
-import StatusBar from './components/StatusBar';
-import Omnibox from './components/leap/Omnibox';
 import ErrorBoundary from '~/views/components/ErrorBoundary';
 import { TutorialModal } from '~/views/landscape/components/TutorialModal';
-
-import GlobalStore from '~/logic/store/store';
-import GlobalSubscription from '~/logic/subscription/global';
-import GlobalApi from '~/logic/api/global';
-import { uxToHex } from '~/logic/lib/util';
-import { foregroundFromBackground } from '~/logic/lib/sigil';
-import withState from '~/logic/lib/withState';
-import useLocalState from '~/logic/state/local';
-import useContactState from '~/logic/state/contact';
-import useGroupState from '~/logic/state/group';
-import useSettingsState from '~/logic/state/settings';
-import gcpManager from '~/logic/lib/gcpManager';
-
+import './apps/chat/css/custom.css';
+import Omnibox from './components/leap/Omnibox';
+import StatusBar from './components/StatusBar';
+import './css/fonts.css';
+import './css/indigo-static.css';
+import { Content } from './landscape/components/Content';
+import './landscape/css/custom.css';
+import { bootstrapApi } from '~/logic/api/bootstrap';
+import useLaunchState from '../logic/state/launch';
 
 const Root = withState(styled.div`
   font-family: ${p => p.theme.fonts.sans};
@@ -82,31 +74,39 @@ class App extends React.Component {
   constructor(props) {
     super(props);
     this.ship = window.ship;
-    this.store = new GlobalStore();
-    this.store.setStateHandler(this.setState.bind(this));
-    this.state = this.store.state;
-
-    this.appChannel = new window.channel();
-    this.api = new GlobalApi(this.ship, this.appChannel, this.store);
-    gcpManager.configure(this.api);
-    this.subscription =
-      new GlobalSubscription(this.store, this.api, this.appChannel);
 
     this.updateTheme = this.updateTheme.bind(this);
-    this.faviconString = this.faviconString.bind(this);
+    this.updateMobile = this.updateMobile.bind(this);
   }
 
   componentDidMount() {
-    this.subscription.start();
-    this.themeWatcher = window.matchMedia('(prefers-color-scheme: dark)');
-    this.themeWatcher.onchange = this.updateTheme;
+    bootstrapApi();
+    this.props.getShallowChildren(`~${window.ship}`, 'dm-inbox');
+    const theme = this.getTheme();
     setTimeout(() => {
       // Something about how the store works doesn't like changing it
       // before the app has actually rendered, hence the timeout.
+      this.themeWatcher = window.matchMedia('(prefers-color-scheme: dark)');
+      this.mobileWatcher = window.matchMedia(`(max-width: ${theme.breakpoints[0]})`);
+      this.smallWatcher = window.matchMedia(`(min-width: ${theme.breakpoints[0]})`);
+      this.mediumWatcher = window.matchMedia(`(min-width: ${theme.breakpoints[1]})`);
+      this.largeWatcher = window.matchMedia(`(min-width: ${theme.breakpoints[2]})`);
+      // TODO: addListener is deprecated, but safari 13 requires it
+      this.themeWatcher.addListener(this.updateTheme);
+      this.mobileWatcher.addListener(this.updateMobile);
+      this.smallWatcher.addListener(this.updateSmall);
+      this.mediumWatcher.addListener(this.updateMedium);
+      this.largeWatcher.addListener(this.updateLarge);
+
+      this.updateMobile(this.mobileWatcher);
+      this.updateSmall(this.updateSmall);
       this.updateTheme(this.themeWatcher);
+      this.updateMedium(this.mediumWatcher);
+      this.updateLarge(this.largeWatcher);
     }, 500);
-    this.api.local.getBaseHash();
-    this.api.settings.getAll();
+    this.props.getBaseHash();
+    this.props.getRuntimeLag();  // TODO  consider polling periodically
+    this.props.getAll();
     gcpManager.start();
     Mousetrap.bindGlobal(['command+/', 'ctrl+/'], (e) => {
       e.preventDefault();
@@ -116,63 +116,76 @@ class App extends React.Component {
   }
 
   componentWillUnmount() {
-    this.themeWatcher.onchange = undefined;
+    this.themeWatcher.removeListener(this.updateTheme);
+    this.mobileWatcher.removeListener(this.updateMobile);
+    this.smallWatcher.removeListener(this.updateSmall);
+    this.mediumWatcher.removeListener(this.updateMedium);
+    this.largeWatcher.removeListener(this.updateLarge);
   }
 
   updateTheme(e) {
-    this.props.set(state => {
+    this.props.set((state) => {
       state.dark = e.matches;
     });
   }
 
-  faviconString() {
-    let background = '#ffffff';
-    if (this.props.contacts.hasOwnProperty(`~${window.ship}`)) {
-      background = `#${uxToHex(this.props.contacts[`~${window.ship}`].color)}`;
-    }
-    const foreground = foregroundFromBackground(background);
-    const svg = sigiljs({
-      patp: window.ship,
-      renderer: stringRenderer,
-      size: 16,
-      colors: [background, foreground]
+  updateMobile(e) {
+    this.props.set((state) => {
+      state.mobile = e.matches;
     });
-    const dataurl = 'data:image/svg+xml;base64,' + btoa(svg);
-    return dataurl;
+  }
+
+  updateSmall = (e) => {
+    this.props.set((state) => {
+      state.breaks.sm = e.matches;
+    });
+  }
+
+  updateMedium = (e) => {
+    this.props.set((state) => {
+      state.breaks.md = e.matches;
+    });
+  }
+
+  updateLarge = (e) => {
+    this.props.set((state) => {
+      state.breaks.lg = e.matches;
+    });
+  }
+
+  getTheme() {
+    const { props } = this;
+    return ((props.dark && props?.display?.theme == 'auto') ||
+      props?.display?.theme == 'dark'
+    ) ? dark : light;
   }
 
   render() {
-    const { state, props } = this;
-    const theme =
-    ((props.dark && props?.display?.theme == "auto") ||
-      props?.display?.theme == "dark"
-    ) ? dark : light;
+    const theme = this.getTheme();
 
-    const ourContact = this.props.contacts[`~${this.ship}`] || null;
+    const { ourContact } = this.props;
     return (
       <ThemeProvider theme={theme}>
+        <ShortcutContextProvider>
         <Helmet>
           {window.ship.length < 14
-            ? <link rel="icon" type="image/svg+xml" href={this.faviconString()} />
+            ? <link rel="icon" type="image/svg+xml" href={svgDataURL(favicon())} />
             : null}
         </Helmet>
         <Root>
           <Router>
-            <TutorialModal api={this.api} />
+            <TutorialModal />
             <ErrorBoundary>
               <StatusBarWithRouter
                 props={this.props}
                 ourContact={ourContact}
-                api={this.api}
-                connection={this.state.connection}
+                connection={'foo'}
                 subscription={this.subscription}
                 ship={this.ship}
               />
             </ErrorBoundary>
             <ErrorBoundary>
               <Omnibox
-                associations={state.associations}
-                api={this.api}
                 show={this.props.omniboxShown}
                 toggle={this.props.toggleOmnibox}
               />
@@ -180,22 +193,51 @@ class App extends React.Component {
             <ErrorBoundary>
               <Content
                 ship={this.ship}
-                api={this.api}
                 subscription={this.subscription}
-                connection={this.state.connection}
+                connection={'aa'}
               />
             </ErrorBoundary>
           </Router>
         </Root>
         <div id="portal-root" />
+        </ShortcutContextProvider>
       </ThemeProvider>
     );
   }
 }
+const WarmApp = process.env.NODE_ENV === 'production' ? App : hot(App);
 
-export default withState(process.env.NODE_ENV === 'production' ? App : hot(App), [
-  [useGroupState],
-  [useContactState],
-  [useSettingsState, ['display']],
-  [useLocalState]
-]);
+const selContacts = s => s.contacts[`~${window.ship}`];
+const selLocal = s => [s.set, s.omniboxShown, s.toggleOmnibox, s.dark];
+const selSettings = s => [s.display, s.getAll];
+const selGraph = s => s.getShallowChildren;
+const selLaunch = s => [s.getRuntimeLag, s.getBaseHash];
+
+const WithApp = React.forwardRef((props, ref) => {
+  const ourContact = useContactState(selContacts);
+  const [display, getAll] = useSettingsState(selSettings, shallow);
+  const [setLocal, omniboxShown, toggleOmnibox, dark] = useLocalState(selLocal);
+  const getShallowChildren = useGraphState(selGraph);
+  const [getRuntimeLag, getBaseHash] = useLaunchState(selLaunch, shallow);
+
+  return (
+    <WarmApp
+      ref={ref}
+      ourContact={ourContact}
+      display={display}
+      getAll={getAll}
+      set={setLocal}
+      dark={dark}
+      getShallowChildren={getShallowChildren}
+      getRuntimeLag={getRuntimeLag}
+      getBaseHash={getBaseHash}
+      toggleOmnibox={toggleOmnibox}
+      omniboxShown={omniboxShown}
+    />
+  );
+});
+
+WarmApp.whyDidYouRender = true;
+
+export default WithApp;
+

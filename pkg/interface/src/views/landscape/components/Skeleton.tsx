@@ -1,61 +1,47 @@
-import React, { ReactElement, ReactNode, useMemo } from 'react';
-
-import { Groups, Graphs, Invites, Rolodex, Path, AppName } from '@urbit/api';
-import { Associations } from '@urbit/api/metadata';
-
+import React, { ReactElement, ReactNode, useCallback, useState } from 'react';
 import { Sidebar } from './Sidebar/Sidebar';
-import GlobalApi from '~/logic/api/global';
-import { useGraphModule } from './Sidebar/Apps';
-import { Body } from '~/views/components/Body';
 import { Workspace } from '~/types/workspace';
-import useGraphState from '~/logic/state/graph';
-import useHarkState from '~/logic/state/hark';
+import { Body } from '~/views/components/Body';
 import ErrorBoundary from '~/views/components/ErrorBoundary';
+import { useShortcut } from '~/logic/state/settings';
 
 interface SkeletonProps {
   children: ReactNode;
   recentGroups: string[];
   selected?: string;
-  selectedApp?: AppName;
   baseUrl: string;
   mobileHide?: boolean;
-  api: GlobalApi;
   workspace: Workspace;
 }
 
-export function Skeleton(props: SkeletonProps): ReactElement {
-  const graphs = useGraphState(state => state.graphs);
-  const graphKeys = useGraphState(state => state.graphKeys);
-  const unreads = useHarkState(state => state.unreads);
-  const graphConfig = useGraphModule(graphKeys, graphs, unreads.graph);
-  const config = useMemo(
-    () => ({
-      graph: graphConfig
-    }),
-    [graphConfig]
-  );
+export const Skeleton = React.memo((props: SkeletonProps): ReactElement => {
+  const [sidebar, setSidebar] = useState(true);
+  useShortcut('hideSidebar', useCallback(() => {
+    setSidebar(s => !s);
+  }, []));
 
   return (
     <Body
       display="grid"
       gridTemplateColumns={
-        ['100%', 'minmax(150px, 1fr) 3fr', 'minmax(250px, 1fr) 4fr']
+        sidebar
+        ?  ['100%', 'minmax(150px, 1fr) 3fr', 'minmax(250px, 1fr) 4fr']
+        : '100%'
       }
       gridTemplateRows="100%"
     >
       <ErrorBoundary>
-        <Sidebar
-          api={props.api}
-          recentGroups={props.recentGroups}
-          selected={props.selected}
-          apps={config}
-          baseUrl={props.baseUrl}
-          mobileHide={props.mobileHide}
-          workspace={props.workspace}
-          history={props.history}
+        { sidebar && (
+          <Sidebar
+            recentGroups={props.recentGroups}
+            selected={props.selected}
+            baseUrl={props.baseUrl}
+            mobileHide={props.mobileHide}
+            workspace={props.workspace}
           />
+        )}
       </ErrorBoundary>
       {props.children}
     </Body>
   );
-}
+});

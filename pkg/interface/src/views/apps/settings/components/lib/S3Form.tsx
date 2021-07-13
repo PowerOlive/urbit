@@ -1,24 +1,16 @@
-import React, { ReactElement, useCallback } from 'react';
-import { Formik, FormikHelpers } from 'formik';
-
 import {
-  ManagedTextInputField as Input,
-  ManagedForm as Form,
-  Box,
-  Text,
-  Button,
-  Col,
-  Anchor
-} from '@tlon/indigo-react';
-import { AsyncButton } from "~/views/components/AsyncButton";
+    Anchor, Col, ManagedForm as Form, ManagedTextInputField as Input,
 
-import GlobalApi from '~/logic/api/global';
-import { BucketList } from './BucketList';
-import { S3State } from '~/types/s3-update';
-import useS3State from '~/logic/state/storage';
-import { BackButton } from './BackButton';
-import { StorageState } from '~/types';
+    Text
+} from '@tlon/indigo-react';
+import { Formik, FormikHelpers } from 'formik';
+import React, { ReactElement, useCallback } from 'react';
 import useStorageState from '~/logic/state/storage';
+import { AsyncButton } from '~/views/components/AsyncButton';
+import { BackButton } from './BackButton';
+import { BucketList } from './BucketList';
+import airlock from '~/logic/api';
+import { setAccessKeyId, setEndpoint, setSecretAccessKey } from '@urbit/api';
 
 interface FormSchema {
   s3bucket: string;
@@ -28,35 +20,28 @@ interface FormSchema {
   s3secretAccessKey: string;
 }
 
-interface S3FormProps {
-  api: GlobalApi;
-}
-
-export default function S3Form(props: S3FormProps): ReactElement {
-  const { api } = props;
-  const s3 = useStorageState((state) => state.s3);
+export default function S3Form(_props: {}): ReactElement {
+  const s3 = useStorageState(state => state.s3);
 
   const onSubmit = useCallback(async (values: FormSchema, actions: FormikHelpers<FormSchema>) => {
-      if (values.s3secretAccessKey !== s3.credentials?.secretAccessKey) {
-        await api.s3.setSecretAccessKey(values.s3secretAccessKey);
-      }
+    if (values.s3secretAccessKey !== s3.credentials?.secretAccessKey) {
+      await airlock.poke(setSecretAccessKey(values.s3secretAccessKey));
+    }
 
-      if (values.s3endpoint !== s3.credentials?.endpoint) {
-        await api.s3.setEndpoint(values.s3endpoint);
-      }
+    if (values.s3endpoint !== s3.credentials?.endpoint) {
+      await airlock.poke(setEndpoint(values.s3endpoint));
+    }
 
-      if (values.s3accessKeyId !== s3.credentials?.accessKeyId) {
-        await api.s3.setAccessKeyId(values.s3accessKeyId);
-      }
-      actions.setStatus({ success: null });
-    },
-    [api, s3]
-  );
+    if (values.s3accessKeyId !== s3.credentials?.accessKeyId) {
+      await airlock.poke(setAccessKeyId(values.s3accessKeyId));
+    }
+    actions.setStatus({ success: null });
+  }, [s3]);
 
   return (
     <>
       <BackButton />
-      <Col p='5' pt='4' borderBottom='1' borderBottomColor='washedGray'>
+      <Col p={5} pt={4} borderBottom={1} borderBottomColor='washedGray'>
         <Formik
           initialValues={
             {
@@ -70,8 +55,8 @@ export default function S3Form(props: S3FormProps): ReactElement {
           onSubmit={onSubmit}
         >
           <Form>
-            <Col maxWidth='600px' gapY='5'>
-              <Col gapY='1' mt='0'>
+            <Col maxWidth='600px' gapY={5}>
+              <Col gapY={1} mt={0}>
                 <Text color='black' fontSize={2} fontWeight='medium'>
                   S3 Storage Setup
                 </Text>
@@ -81,8 +66,8 @@ export default function S3Form(props: S3FormProps): ReactElement {
                   <Anchor
                     target='_blank'
                     style={{ textDecoration: 'none' }}
-                    borderBottom='1'
-                    ml='1'
+                    borderBottom={1}
+                    ml={1}
                     href='https://urbit.org/using/os/s3/'
                   >
                     Learn more
@@ -103,20 +88,19 @@ export default function S3Form(props: S3FormProps): ReactElement {
           </Form>
         </Formik>
       </Col>
-      <Col maxWidth='600px' p='5' gapY='4'>
-        <Col gapY='1'>
+      <Col maxWidth='600px' p={5} gapY={4}>
+        <Col gapY={1}>
           <Text color='black' mb={4} fontSize={2} fontWeight='medium'>
             S3 Buckets
           </Text>
           <Text gray>
-            Your 'active' bucket will be the one used when Landscape uploads a
+            Your &apos;active&apos; bucket will be the one used when Landscape uploads a
             file
           </Text>
         </Col>
         <BucketList
           buckets={s3.configuration.buckets}
           selected={s3.configuration.currentBucket}
-          api={api}
         />
       </Col>
     </>

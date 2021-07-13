@@ -1,29 +1,35 @@
-import React, { useEffect, useMemo } from 'react';
-import bigInt from 'big-integer';
 import { Col } from '@tlon/indigo-react';
-import { CommentItem } from './CommentItem';
-import CommentInput from './CommentInput';
-import { Contacts } from '@urbit/api/contacts';
-import GlobalApi from '~/logic/api/global';
+import {
+  createPost,
+  createBlankNodeWithChildPost,
+  Association,
+  GraphNode,
+  Group,
+  markCountAsRead,
+  addPost,
+  resourceFromPath
+} from '@urbit/api';
+import bigInt from 'big-integer';
 import { FormikHelpers } from 'formik';
-import { Group, GraphNode, Association } from '@urbit/api';
-import { createPost, createBlankNodeWithChildPost } from '~/logic/api/graph';
+import React, { useEffect, useMemo } from 'react';
+import { isWriter } from '~/logic/lib/group';
+import { getUnreadCount } from '~/logic/lib/hark';
+import { referenceToPermalink } from '~/logic/lib/permalinks';
 import { getLatestCommentRevision } from '~/logic/lib/publish';
 import tokenizeMessage from '~/logic/lib/tokenizeMessage';
-import { getUnreadCount } from '~/logic/lib/hark';
-import { PropFunc } from '~/types/util';
-import { isWriter } from '~/logic/lib/group';
+import { useQuery } from '~/logic/lib/useQuery';
 import useHarkState from '~/logic/state/hark';
-import {useQuery} from '~/logic/lib/useQuery';
-import {referenceToPermalink} from '~/logic/lib/permalinks';
+import { PropFunc } from '~/types/util';
+import CommentInput from './CommentInput';
+import { CommentItem } from './CommentItem';
+import airlock from '~/logic/api';
+import useGraphState from '~/logic/state/graph';
+import { useHistory } from 'react-router';
 
 interface CommentsProps {
   comments: GraphNode;
   association: Association;
-  name: string;
-  ship: string;
   baseUrl: string;
-  api: GlobalApi;
   group: Group;
 }
 
@@ -31,26 +37,25 @@ export function Comments(props: CommentsProps & PropFunc<typeof Col>) {
   const {
     association,
     comments,
-    ship,
-    name,
-    api,
-    history,
     baseUrl,
     group,
     ...rest
   } = props;
+  const addNode = useGraphState(s => s.addNode);
+  const history = useHistory();
+
+  const { ship, name } = resourceFromPath(association.resource);
 
   const { query } = useQuery();
   const selectedComment = useMemo(() => {
-    const id = query.get('selected')
+    const id = query.get('selected');
     return id ? bigInt(id) : null;
   }, [query]);
 
   const editCommentId = useMemo(() => {
-    const id = query.get('edit')
+    const id = query.get('edit');
     return id || '';
   }, [query]);
-
 
   const onSubmit = async (
     { comment },
@@ -59,11 +64,12 @@ export function Comments(props: CommentsProps & PropFunc<typeof Col>) {
     try {
       const content = tokenizeMessage(comment);
       const node = createBlankNodeWithChildPost(
+        window.ship,
         comments?.post?.index,
         '1',
         content
       );
-      await api.graph.addNode(ship, name, node);
+      addNode(ship, name, node);
       actions.resetForm();
       actions.setStatus({ success: null });
     } catch (e) {
@@ -78,15 +84,16 @@ export function Comments(props: CommentsProps & PropFunc<typeof Col>) {
   ) => {
     try {
       const commentNode = comments.children.get(bigInt(editCommentId))!;
-      const [idx, _] = getLatestCommentRevision(commentNode);
+      const [idx] = getLatestCommentRevision(commentNode);
 
       const content = tokenizeMessage(comment);
       const post = createPost(
+        window.ship,
         content,
         commentNode.post.index,
-        parseInt(idx + 1, 10)
+        parseInt((idx + 1).toString(), 10).toString()
       );
-      await api.graph.addPost(ship, name, post);
+      await airlock.thread(addPost(ship, name, post));
       history.push(baseUrl);
     } catch (e) {
       console.error(e);
@@ -97,7 +104,7 @@ export function Comments(props: CommentsProps & PropFunc<typeof Col>) {
   let commentContent = null;
   if (editCommentId) {
     const commentNode = comments.children.get(bigInt(editCommentId));
-    const [_, post] = getLatestCommentRevision(commentNode);
+    const [, post] = getLatestCommentRevision(commentNode);
     commentContent = post.contents.reduce((val, curr) => {
       if ('text' in curr) {
         val = val + curr.text;
@@ -120,9 +127,9 @@ export function Comments(props: CommentsProps & PropFunc<typeof Col>) {
 
   useEffect(() => {
     return () => {
-      api.hark.markCountAsRead(association, parentIndex, 'comment');
+      airlock.poke(markCountAsRead(association.resource));
     };
-  }, [comments.post.index]);
+  }, [comments.post?.index]);
 
   const unreads = useHarkState(state => state.unreads);
   const readCount = children.length - getUnreadCount(unreads, association.resource, parentIndex);
@@ -130,16 +137,7 @@ export function Comments(props: CommentsProps & PropFunc<typeof Col>) {
   const canComment = isWriter(group, association.resource) || association.metadata.vip === 'reader-comments';
 
   return (
-    <Col {...rest}>
-      {( !editCommentId && canComment ? <CommentInput onSubmit={onSubmit} /> : null )}
-      {( editCommentId ? (
-        <CommentInput
-          onSubmit={onEdit}
-          label='Edit Comment'
-          loadingText='Editing...'
-          initial={commentContent}
-        />
-      ) : null )}
+    <Col {...rest} minWidth={0}>
       {children.reverse()
           .map(([idx, comment], i) => {
           const highlighted = selectedComment?.eq(idx) ?? false;
@@ -148,7 +146,6 @@ export function Comments(props: CommentsProps & PropFunc<typeof Col>) {
               highlighted={highlighted}
               comment={comment}
               key={idx.toString()}
-              api={api}
               name={name}
               ship={ship}
               unread={i >= readCount}
@@ -157,7 +154,15 @@ export function Comments(props: CommentsProps & PropFunc<typeof Col>) {
               pending={idx.toString() === editCommentId}
             />
           );
-      })}
+          })}
+      {( editCommentId ? (
+        <CommentInput
+          onSubmit={onEdit}
+          label='Edit Comment'
+          initial={commentContent}
+        />
+      ) : null )}
+      {( !editCommentId && canComment ? <CommentInput placeholder="Comment" onSubmit={onSubmit} /> : null )}
     </Col>
   );
 }

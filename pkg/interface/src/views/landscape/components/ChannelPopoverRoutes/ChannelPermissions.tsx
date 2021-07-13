@@ -1,21 +1,20 @@
-import React from 'react';
-import _ from 'lodash';
-import * as Yup from 'yup';
 import {
-  Label,
-  ManagedToggleSwitchField as Checkbox,
-  Box,
-  Col,
-  Text
+    Box,
+    Col, Label,
+    ManagedToggleSwitchField as Checkbox,
+
+    Text
 } from '@tlon/indigo-react';
-import { Formik, Form } from 'formik';
-import { PermVariation, Association, Group, Groups, Rolodex } from '@urbit/api';
-import { shipSearchSchemaInGroup } from '~/views/components/ShipSearch';
-import GlobalApi from '~/logic/api/global';
+import { addTag, Association, Group, metadataUpdate, PermVariation, removeTag } from '@urbit/api';
+import { Form, Formik } from 'formik';
+import _ from 'lodash';
+import React from 'react';
+import * as Yup from 'yup';
 import { resourceFromPath } from '~/logic/lib/group';
-import { FormSubmit } from '~/views/components/FormSubmit';
+import { FormGroupChild } from '~/views/components/FormGroup';
+import { shipSearchSchemaInGroup } from '~/views/components/ShipSearch';
 import { ChannelWritePerms } from '../ChannelWritePerms';
-import {FormGroupChild} from '~/views/components/FormGroup';
+import airlock from '~/logic/api';
 
 function PermissionsSummary(props: {
   writersSize: number;
@@ -37,10 +36,10 @@ function PermissionsSummary(props: {
 
   return (
     <Box
-      p="2"
-      border="1"
+      p={2}
+      border={1}
       borderColor="lightBlue"
-      borderRadius="1"
+      borderRadius={1}
       backgroundColor="washedBlue"
     >
       <Text>
@@ -54,7 +53,6 @@ function PermissionsSummary(props: {
 interface GraphPermissionsProps {
   association: Association;
   group: Group;
-  api: GlobalApi;
 }
 
 interface FormSchema {
@@ -72,7 +70,7 @@ const formSchema = (members: string[]) => {
 };
 
 export function GraphPermissions(props: GraphPermissionsProps) {
-  const { api, group, association } = props;
+  const { group, association } = props;
 
   const writers = _.get(
     group?.tags,
@@ -109,9 +107,9 @@ export function GraphPermissions(props: GraphPermissionsProps) {
     };
     const allWriters = Array.from(writers).map(w => `~${w}`);
     if (values.readerComments !== readerComments) {
-      await api.metadata.update(association, {
+      await airlock.poke(metadataUpdate(association, {
         vip: values.readerComments ? 'reader-comments' : ''
-      });
+      }));
     }
 
     if (values.writePerms === 'everyone') {
@@ -119,7 +117,7 @@ export function GraphPermissions(props: GraphPermissionsProps) {
         actions.setStatus({ success: null });
         return;
       }
-      await api.groups.removeTag(resource, tag, allWriters);
+      await airlock.poke(removeTag(tag, resource, allWriters));
     } else if (values.writePerms === 'self') {
       if (writePerms === 'self') {
         actions.setStatus({ success: null });
@@ -127,8 +125,8 @@ export function GraphPermissions(props: GraphPermissionsProps) {
       }
       const promises: Promise<any>[] = [];
       allWriters.length > 0 &&
-        promises.push(api.groups.removeTag(resource, tag, allWriters));
-      promises.push(api.groups.addTag(resource, tag, [`~${hostShip}`]));
+        promises.push(airlock.poke(removeTag(tag, resource, allWriters)));
+      promises.push(airlock.poke(addTag(resource, tag, [`~${hostShip}`])));
       await Promise.all(promises);
       actions.setStatus({ success: null });
     } else if (values.writePerms === 'subset') {
@@ -141,9 +139,9 @@ export function GraphPermissions(props: GraphPermissionsProps) {
 
       const promises: Promise<any>[] = [];
       toRemove.length > 0 &&
-        promises.push(api.groups.removeTag(resource, tag, toRemove));
+        promises.push(airlock.poke(removeTag(tag, resource, toRemove)));
       toAdd.length > 0 &&
-        promises.push(api.groups.addTag(resource, tag, toAdd));
+        promises.push(airlock.poke(addTag(resource, tag, toAdd)));
       await Promise.all(promises);
 
       actions.setStatus({ success: null });
@@ -160,9 +158,9 @@ export function GraphPermissions(props: GraphPermissionsProps) {
     >
       <Form style={{ display: 'contents' }}>
         <FormGroupChild id="permissions" />
-        <Col mx="4" mt="4" flexShrink={0} gapY="5">
-          <Col gapY="1" mt="0">
-            <Text id="permissions" fontWeight="bold" fontSize="2">
+        <Col mx={4} mt={4} flexShrink={0} gapY={5}>
+          <Col gapY={1} mt={0}>
+            <Text id="permissions" fontWeight="bold" fontSize={2}>
               Permissions
             </Text>
             <Text gray>
@@ -171,7 +169,7 @@ export function GraphPermissions(props: GraphPermissionsProps) {
             </Text>
           </Col>
           <Col>
-            <Label mb="2">Permissions Summary</Label>
+            <Label mb={2}>Permissions Summary</Label>
             <PermissionsSummary
               writersSize={writers.size}
               vip={association.metadata.vip}

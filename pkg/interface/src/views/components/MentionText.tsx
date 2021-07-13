@@ -1,21 +1,18 @@
-import React, { useState, useCallback } from 'react';
-import _ from 'lodash';
-import { Text, Box } from '@tlon/indigo-react';
-import { Contact, Contacts, Content, Group } from '@urbit/api';
-import RichText from '~/views/components/RichText';
-import { cite, useShowNickname, uxToHex, deSig } from '~/logic/lib/util';
+import { Text } from '@tlon/indigo-react';
+import { Contact, Content, Group } from '@urbit/api';
+import React from 'react';
+import { referenceToPermalink } from '~/logic/lib/permalinks';
+import { cite, deSig, useShowNickname } from '~/logic/lib/util';
+import { useContact } from '~/logic/state/contact';
+import { PropFunc } from '~/types';
 import ProfileOverlay from '~/views/components/ProfileOverlay';
-import { useHistory } from 'react-router-dom';
-import useContactState, {useContact} from '~/logic/state/contact';
-import {referenceToPermalink} from '~/logic/lib/permalinks';
-import GlobalApi from '~/logic/api/global';
+import RichText from '~/views/components/RichText';
 
 interface MentionTextProps {
   contact?: Contact;
   content: Content[];
   group: Group;
   transcluded: number;
-  api: GlobalApi;
 }
 export function MentionText(props: MentionTextProps) {
   const { content, contact, group, ...rest } = props;
@@ -41,16 +38,14 @@ export function MentionText(props: MentionTextProps) {
 
 export function Mention(props: {
   ship: string;
-  first?: Boolean;
-  api: any;
-}) {
-  const { ship, first, api, ...rest } = props;
+  first?: boolean;
+} & PropFunc<typeof Text>) {
+  const { ship, first = false, ...rest } = props;
   const contact = useContact(`~${deSig(ship)}`);
   const showNickname = useShowNickname(contact);
   const name = showNickname ? contact?.nickname : cite(ship);
-
   return (
-    <ProfileOverlay ship={ship} api={api} display="inline">
+    <ProfileOverlay ship={ship} display="inline">
       <Text
         marginLeft={first? 0 : 1}
         marginRight={1}
@@ -59,6 +54,8 @@ export function Mention(props: {
         color='blue'
         fontSize={showNickname ? 1 : 0}
         mono={!showNickname}
+        title={showNickname ? cite(ship) : contact?.nickname}
+        {...rest}
       >
         {name}
       </Text>

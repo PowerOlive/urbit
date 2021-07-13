@@ -1,17 +1,13 @@
-import React from 'react';
-import { FormikHelpers } from 'formik';
-import GlobalApi from '~/logic/api/global';
-import { useWaitForProps } from '~/logic/lib/useWaitForProps';
-import { RouteComponentProps } from 'react-router-dom';
-import { PostForm, PostFormSchema } from './NoteForm';
-import { createPost } from '~/logic/api/graph';
+import { addNodes, Association } from '@urbit/api';
 import { Graph } from '@urbit/api/graph';
-import { Association } from '@urbit/api';
-import { StorageState } from '~/types';
+import { FormikHelpers } from 'formik';
+import React from 'react';
+import { RouteComponentProps } from 'react-router-dom';
 import { newPost } from '~/logic/lib/publish';
+import { PostForm, PostFormSchema } from './NoteForm';
+import airlock from '~/logic/api';
 
 interface NewPostProps {
-  api: GlobalApi;
   book: string;
   ship: string;
   graph: Graph;
@@ -20,9 +16,7 @@ interface NewPostProps {
 }
 
 export default function NewPost(props: NewPostProps & RouteComponentProps) {
-  const { api, book, ship, history } = props;
-
-  const waiter = useWaitForProps(props, 20000);
+  const { book, ship, history } = props;
 
   const onSubmit = async (
     values: PostFormSchema,
@@ -30,8 +24,8 @@ export default function NewPost(props: NewPostProps & RouteComponentProps) {
   ) => {
     const { title, body } = values;
     try {
-      const [noteId, nodes] = newPost(title, body);
-      await api.graph.addNodes(ship, book, nodes);
+      const [, nodes] = newPost(title, body);
+      await airlock.thread(addNodes(ship, book, nodes));
       history.push(`${props.baseUrl}`);
     } catch (e) {
       console.error(e);

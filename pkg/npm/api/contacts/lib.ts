@@ -1,5 +1,5 @@
 
-import { Path, Patp, Poke, resourceAsPath } from "../lib";
+import { Path, Patp, Poke, resourceAsPath, Scry } from "../lib";
 import {
   Contact,
   ContactUpdateAdd,
@@ -13,9 +13,11 @@ import {
   ContactUpdateSetPublic,
 } from "./types";
 
-const storeAction = <T extends ContactUpdate>(data: T): Poke<T> => ({
+export const CONTACT_UPDATE_VERSION: number = 0;
+
+const storeAction = <T extends ContactUpdate>(data: T, version: number = CONTACT_UPDATE_VERSION): Poke<T> => ({
   app: "contact-store",
-  mark: "contact-action",
+  mark: `contact-update-${version}`,
   json: data,
 });
 
@@ -34,9 +36,9 @@ export const removeContact = (ship: Patp): Poke<ContactUpdateRemove> =>
     remove: { ship },
   });
 
-export const share = (recipient: Patp): Poke<ContactShare> => ({
+export const share = (recipient: Patp, version: number = CONTACT_UPDATE_VERSION): Poke<ContactShare> => ({
   app: "contact-push-hook",
-  mark: "contact-action",
+  mark: "contact-share",
   json: { share: recipient },
 });
 
@@ -92,3 +94,16 @@ export const retrieve = (
     }
   };
 }
+
+export const fetchIsAllowed = (
+  entity: string,
+  name: string,
+  ship: string,
+  personal: boolean
+): Scry => {
+  const isPersonal = personal ? 'true' : 'false';
+  return {
+    app: 'contact-store',
+    path: `/is-allowed/${entity}/${name}/${ship}/${isPersonal}`
+  }
+};

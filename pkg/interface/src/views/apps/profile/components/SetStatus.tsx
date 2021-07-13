@@ -1,19 +1,17 @@
-import React, {
-  useState,
-  useCallback,
-  useEffect,
-  ChangeEvent,
-  useRef
-} from 'react';
 import {
-  Row,
-  Text,
-  Button,
+  Button, Row,
+
   StatelessTextInput as Input
 } from '@tlon/indigo-react';
+import { editContact } from '@urbit/api';
+import React, {
+  ChangeEvent, useCallback,
+  useEffect, useRef, useState
+} from 'react';
+import airlock from '~/logic/api';
 
 export function SetStatus(props: any) {
-  const { contact, ship, api, callback } = props;
+  const { contact, ship, callback } = props;
   const inputRef = useRef(null);
   const [_status, setStatus] = useState('');
   const onStatusChange = useCallback(
@@ -28,7 +26,7 @@ export function SetStatus(props: any) {
   }, [contact]);
 
   const editStatus = () => {
-    api.contacts.edit(ship, { status: _status });
+    airlock.poke(editContact(ship, { status: _status }));
     inputRef.current.blur();
     if (callback) {
       callback();
@@ -41,7 +39,7 @@ export function SetStatus(props: any) {
         ref={inputRef}
         onChange={onStatusChange}
         value={_status}
-        autocomplete='off'
+        autoComplete='off'
         width='75%'
         mr={2}
         onKeyPress={(evt) => {

@@ -1,31 +1,27 @@
-import React, { useState, useCallback, useEffect, ReactElement } from 'react';
+import {
+    Box, Col,
+    Icon,
+    ManagedTextInputField as Input, Row,
+    Text
+} from '@tlon/indigo-react';
+import { join, MetadataUpdatePreview, putEntry } from '@urbit/api';
+import { Form, Formik, FormikHelpers, useFormikContext } from 'formik';
 import _ from 'lodash';
-import { Formik, Form, FormikHelpers, useFormikContext } from 'formik';
-import * as Yup from 'yup';
+import React, { ReactElement, useCallback, useEffect, useState } from 'react';
 import { useHistory } from 'react-router-dom';
 import urbitOb from 'urbit-ob';
-
-import {
-  Col,
-  Row,
-  Icon,
-  Box,
-  Text,
-  ManagedTextInputField as Input
-} from '@tlon/indigo-react';
-import { Groups, MetadataUpdatePreview, Associations } from '@urbit/api';
-
-import { AsyncButton } from '~/views/components/AsyncButton';
+import * as Yup from 'yup';
+import { TUTORIAL_GROUP_RESOURCE } from '~/logic/lib/tutorialModal';
+import { useQuery } from '~/logic/lib/useQuery';
 import { useWaitForProps } from '~/logic/lib/useWaitForProps';
-import GlobalApi from '~/logic/api/global';
-import { StatelessAsyncButton } from '~/views/components/StatelessAsyncButton';
 import { getModuleIcon } from '~/logic/lib/util';
-import { FormError } from '~/views/components/FormError';
-import { GroupSummary } from './GroupSummary';
 import useGroupState from '~/logic/state/group';
 import useMetadataState from '~/logic/state/metadata';
-import {TUTORIAL_GROUP_RESOURCE} from '~/logic/lib/tutorialModal';
-import {useQuery} from '~/logic/lib/useQuery';
+import { AsyncButton } from '~/views/components/AsyncButton';
+import { FormError } from '~/views/components/FormError';
+import { StatelessAsyncButton } from '~/views/components/StatelessAsyncButton';
+import { GroupSummary } from './GroupSummary';
+import airlock from '~/logic/api';
 
 const formSchema = Yup.object({
   group: Yup.string()
@@ -44,7 +40,6 @@ interface FormSchema {
 }
 
 interface JoinGroupProps {
-  api: GlobalApi;
   autojoin?: string;
 }
 
@@ -61,8 +56,8 @@ function Autojoin(props: { autojoin: string | null }) {
 }
 
 export function JoinGroup(props: JoinGroupProps): ReactElement {
-  const { api, autojoin } = props;
-  const associations = useMetadataState(state => state.associations);
+  const { autojoin } = props;
+  const { associations, getPreview } = useMetadataState();
   const groups = useGroupState(state => state.groups);
   const history = useHistory();
   const initialValues: FormSchema = {
@@ -79,12 +74,12 @@ export function JoinGroup(props: JoinGroupProps): ReactElement {
   const onConfirm = useCallback(async (group: string) => {
     const [,,ship,name] = group.split('/');
     if(group === TUTORIAL_GROUP_RESOURCE) {
-      await api.settings.putEntry('tutorial', 'joined', Date.now());
+      await airlock.poke(putEntry('tutorial', 'joined', Date.now()));
     }
     if (group in groups) {
       return history.push(`/~landscape${group}`);
     }
-    await api.groups.join(ship, name);
+    await airlock.poke(join(ship, name));
     try {
       await waiter((p) => {
         return group in p.groups &&
@@ -99,7 +94,9 @@ export function JoinGroup(props: JoinGroupProps): ReactElement {
 
       if(groups?.[group]?.hidden) {
         const { metadata } = associations.graph[group];
-        history.push(`/~landscape/home/resource/${metadata.config.graph}${group}`);
+        if (metadata?.config && 'graph' in metadata.config) {
+          history.push(`/~landscape/home/resource/${metadata.config.graph}${group}`);
+        }
         return;
       } else {
         history.push(`/~landscape${group}`);
@@ -108,7 +105,7 @@ export function JoinGroup(props: JoinGroupProps): ReactElement {
       //  drop them into inbox to show join request still pending
       history.push('/~notifications');
     }
-  }, [api, waiter, history, associations, groups]);
+  }, [waiter, history, associations, groups]);
 
   const onSubmit = useCallback(
     async (values: FormSchema, actions: FormikHelpers<FormSchema>) => {
@@ -119,34 +116,34 @@ export function JoinGroup(props: JoinGroupProps): ReactElement {
     }
       //  skip if it's unmanaged
       try {
-        const prev = await api.metadata.preview(path);
+        const prev = await getPreview(path);
         actions.setStatus({ success: null });
         setPreview(prev);
       } catch (e) {
-        if (!(e instanceof Error)) {
-          actions.setStatus({ error: 'Unknown error' });
-        } else if (e.message === 'no-permissions') {
+        if (e === 'no-permissions') {
           actions.setStatus({
             error:
               'Unable to join group, you do not have the correct permissions'
           });
-        } else if (e.message === 'offline') {
+        } else if (e === 'offline') {
           setPreview(path);
+        } else {
+          actions.setStatus({ error: 'Unknown error' });
         }
       }
     },
-    [api, waiter, history, onConfirm]
+    [waiter, history, onConfirm]
   );
 
   return (
-    <Col p="3">
+    <Col p={3}>
       <Box mb={3}>
-        <Text fontSize="2" fontWeight="bold">
+        <Text fontSize={2} fontWeight="bold">
           Join a Group
         </Text>
       </Box>
       {_.isString(preview) ? (
-        <Col width="100%" gapY="4">
+        <Col width="100%" gapY={4}>
           <Text>The host appears to be offline. Join anyway?</Text>
           <StatelessAsyncButton
             primary
@@ -165,23 +162,23 @@ export function JoinGroup(props: JoinGroupProps): ReactElement {
           >
             { Object.keys(preview.channels).length > 0 && (
               <Col
-                gapY="2"
-                p="2"
-                borderRadius="2"
-                border="1"
+                gapY={2}
+                p={2}
+                borderRadius={2}
+                border={1}
                 borderColor="washedGray"
                 bg="washedBlue"
                 maxHeight="300px"
                 overflowY="auto"
               >
-                <Text gray fontSize="1">
+                <Text gray fontSize={1}>
                   Channels
                 </Text>
-                <Box width="100%" flexShrink="0">
-                  {Object.values(preview.channels).map(({ metadata }: any) => (
-                    <Row width="100%">
+                <Box width="100%" flexShrink={0}>
+                  {Object.values(preview.channels).map(({ metadata }: any, i) => (
+                    <Row key={i} width="100%">
                       <Icon
-                        mr="2"
+                        mr={2}
                         color="blue"
                         icon={getModuleIcon(metadata?.config?.graph) as any}
                       />
@@ -202,7 +199,7 @@ export function JoinGroup(props: JoinGroupProps): ReactElement {
           </StatelessAsyncButton>
         </>
       ) : (
-        <Col width="100%" gapY="4">
+        <Col width="100%" gapY={4}>
           <Formik
             validationSchema={formSchema}
             initialValues={initialValues}
@@ -216,8 +213,8 @@ export function JoinGroup(props: JoinGroupProps): ReactElement {
                 caption="What group are you joining?"
                 placeholder="~sampel-palnet/test-group"
               />
-              <AsyncButton mt="4">Join Group</AsyncButton>
-              <FormError mt="4" />
+              <AsyncButton mt={4}>Join Group</AsyncButton>
+              <FormError mt={4} />
             </Form>
           </Formik>
         </Col>

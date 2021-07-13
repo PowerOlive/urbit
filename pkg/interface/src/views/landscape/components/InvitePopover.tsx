@@ -1,31 +1,29 @@
-import React, { useCallback, useRef } from 'react';
-import _ from 'lodash';
-import { Switch, Route, useHistory } from 'react-router-dom';
-import { Formik, Form } from 'formik';
-import * as Yup from 'yup';
 import {
-  ManagedTextInputField as Input,
-  Box,
-  Text,
-  Col,
-  Row
-} from '@tlon/indigo-react';
+    Box,
 
-import { ShipSearch } from '~/views/components/ShipSearch';
+    Col, ManagedTextInputField as Input,
+
+    Row, Text
+} from '@tlon/indigo-react';
+import { invite } from '@urbit/api/groups';
 import { Association } from '@urbit/api/metadata';
-import { AsyncButton } from '~/views/components/AsyncButton';
-import { useOutsideClick } from '~/logic/lib/useOutsideClick';
-import { FormError } from '~/views/components/FormError';
+import { Form, Formik } from 'formik';
+import _ from 'lodash';
+import React, { useCallback, useRef } from 'react';
+import { Route, Switch, useHistory } from 'react-router-dom';
+import * as Yup from 'yup';
 import { resourceFromPath } from '~/logic/lib/group';
-import GlobalApi from '~/logic/api/global';
-import { Groups, Rolodex } from '@urbit/api';
+import { useOutsideClick } from '~/logic/lib/useOutsideClick';
 import { deSig } from '~/logic/lib/util';
 import { Workspace } from '~/types/workspace';
+import { AsyncButton } from '~/views/components/AsyncButton';
+import { FormError } from '~/views/components/FormError';
+import { ShipSearch } from '~/views/components/ShipSearch';
+import airlock from '~/logic/api';
 
 interface InvitePopoverProps {
   baseUrl: string;
   association: Association;
-  api: GlobalApi;
   workspace: Workspace;
 }
 
@@ -41,10 +39,10 @@ const formSchema = Yup.object({
 });
 
 export function InvitePopover(props: InvitePopoverProps) {
-  const { baseUrl, api, association } = props;
+  const { baseUrl, association } = props;
 
   const relativePath = (p: string) => baseUrl + p;
-  const { title } = association?.metadata || '';
+  const { title } = association?.metadata || { title: '' };
   const innerRef = useRef(null);
   const history = useHistory();
 
@@ -57,11 +55,11 @@ export function InvitePopover(props: InvitePopoverProps) {
     //  TODO: how to invite via email?
     try {
       const { ship, name }  = resourceFromPath(association.group);
-      await api.groups.invite(
+      await airlock.thread(invite(
         ship, name,
         _.compact(ships).map(s => `~${deSig(s)}`),
         description
-      );
+      ));
 
       actions.setStatus({ success: null });
       onOutsideClick();
@@ -106,7 +104,7 @@ export function InvitePopover(props: InvitePopoverProps) {
               validateOnBlur
             >
               <Form>
-                <Col gapY="3" pt={3} px={3}>
+                <Col gapY={3} pt={3} px={3}>
                   <Box>
                     <Text>Invite to </Text>
                     <Text fontWeight="800">{title}</Text>

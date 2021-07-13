@@ -4,15 +4,17 @@ import { Enc, Path, Patp, PatpNoSig, Poke, Thread } from '../lib/types';
 import { Group, GroupPolicy, GroupPolicyDiff, GroupUpdateAddMembers, GroupUpdateAddTag, GroupUpdateChangePolicy, GroupUpdateRemoveGroup, GroupUpdateRemoveMembers, GroupUpdateRemoveTag, Resource, RoleTags, Tag } from './types';
 import { GroupUpdate } from './update';
 
-export const proxyAction = <T>(data: T): Poke<T> => ({
+export const GROUP_UPDATE_VERSION = 0;
+
+export const proxyAction = <T>(data: T, version: number = GROUP_UPDATE_VERSION): Poke<T> => ({
   app: 'group-push-hook',
-  mark: 'group-update',
+  mark: `group-update-${version}`,
   json: data
 });
 
-const storeAction = <T extends GroupUpdate>(data: T): Poke<T> => ({
+const storeAction = <T extends GroupUpdate>(data: T, version: number = GROUP_UPDATE_VERSION): Poke<T> => ({
   app: 'group-store',
-  mark: 'group-update',
+  mark: `group-update-${version}`,
   json: data
 });
 
@@ -87,8 +89,8 @@ export const removeGroup = (
 
 export const changePolicy = (
   resource: Resource,
-  diff: GroupPolicyDiff
-): Poke<GroupUpdateChangePolicy> => proxyAction({
+  diff: Enc<GroupPolicyDiff>
+): Poke<Enc<GroupUpdateChangePolicy>> => proxyAction({
   changePolicy: {
     resource,
     diff
@@ -144,6 +146,12 @@ export const invite = (
     ships,
     description
   }
+});
+
+export const hideGroup = (
+  resource: string
+): Poke<any> => viewAction({
+  hide: resource
 });
 
 export const roleTags = ['janitor', 'moderator', 'admin'];

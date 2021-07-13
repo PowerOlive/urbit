@@ -1,23 +1,18 @@
-import React, { createRef, useCallback, useRef } from 'react';
-import { IUnControlledCodeMirror, UnControlled as CodeEditor } from 'react-codemirror2';
-import { useFormikContext } from 'formik';
-import { Prompt } from 'react-router-dom';
+import { Box } from '@tlon/indigo-react';
 import { Editor } from 'codemirror';
-
-import { MOBILE_BROWSER_REGEX, usePreventWindowUnload } from '~/logic/lib/util';
-import { PropFunc } from '~/types/util';
-import CodeMirror from 'codemirror';
-
-import 'codemirror/mode/markdown/markdown';
 import 'codemirror/addon/display/placeholder';
 import 'codemirror/addon/edit/continuelist';
-
 import 'codemirror/lib/codemirror.css';
-import { Box } from '@tlon/indigo-react';
-import { useFileDrag } from '~/logic/lib/useDrag';
+import 'codemirror/mode/markdown/markdown';
+import { useFormikContext } from 'formik';
+import React, { useCallback, useRef } from 'react';
+import { UnControlled as CodeEditor } from 'react-codemirror2';
+import { Prompt } from 'react-router-dom';
+import { useFileUpload } from '~/logic/lib/useFileUpload';
+import { IuseStorage } from '~/logic/lib/useStorage';
+import { usePreventWindowUnload } from '~/logic/lib/util';
+import { PropFunc } from '~/types/util';
 import SubmitDragger from '~/views/components/SubmitDragger';
-import useStorage from '~/logic/lib/useStorage';
-import { StorageState } from '~/types';
 
 const MARKDOWN_CONFIG = {
   name: 'markdown'
@@ -66,17 +61,8 @@ export function MarkdownEditor(
     [onChange]
   );
 
-  const handleBlur = useCallback(
-    (_i, e: any) => {
-      onBlur && onBlur(e);
-    },
-    [onBlur]
-  );
-
-  const { uploadDefault, canUpload } = useStorage();
-
-  const onFileDrag = useCallback(
-    async (files: FileList | File[], e: DragEvent) => {
+  const onFileUpload = useCallback(
+    async (files: FileList | File[], { canUpload, uploadDefault }: IuseStorage) => {
       if (!canUpload || !editor.current) {
         return;
       }
@@ -91,14 +77,17 @@ export function MarkdownEditor(
         doc.setValue(doc.getValue().replace(placeholder, markdown));
       });
     },
-    [uploadDefault, canUpload, value, onChange]
+    [value, onChange]
   );
 
-  const { bind, dragging } = useFileDrag(onFileDrag);
+  const {
+    drag: { bind, dragging }
+  } = useFileUpload({
+    onFiles: onFileUpload
+  });
 
   return (
     <Box
-      height="100%"
       position="relative"
       className="publish"
       p={1}
@@ -116,10 +105,10 @@ export function MarkdownEditor(
         value={value}
         options={options}
         onChange={handleChange}
-        onDragLeave={(editor, e) => bind.onDragLeave(e)}
-        onDragOver={(editor, e) => bind.onDragOver(e)}
-        onDrop={(editor, e) => bind.onDrop(e)}
-        onDragEnter={(editor, e) => bind.onDragEnter(e)}
+        onDragLeave={(editor, e: any) => bind.onDragLeave(e)}
+        onDragOver={(editor, e: any) => bind.onDragOver(e)}
+        onDrop={(editor, e: any) => bind.onDrop(e)}
+        onDragEnter={(editor, e: any) => bind.onDragEnter(e)}
       />
       {dragging && <SubmitDragger />}
     </Box>

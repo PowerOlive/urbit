@@ -1,11 +1,9 @@
-import React, { ReactElement } from 'react';
-import moment from 'moment';
-import { Link } from 'react-router-dom';
-import { BigInteger } from 'big-integer';
-
 import { Box, Text } from '@tlon/indigo-react';
 import { Graph } from '@urbit/api';
-
+import { BigInteger } from 'big-integer';
+import moment from 'moment';
+import React, { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { getLatestRevision } from '~/logic/lib/publish';
 import Timestamp from '~/views/components/Timestamp';
 
@@ -31,7 +29,7 @@ function NavigationItem(props: {
         <Timestamp
           stamp={moment(props.date)}
           time={false}
-          fontSize="1"
+          fontSize={1}
           justifyContent={props.prev ? 'flex-start' : 'flex-end'}
         />
       </Link>
@@ -46,16 +44,20 @@ function getAdjacentId(
 ): BigInteger | null {
   const children = Array.from(graph);
   const i = children.findIndex(([index]) => index.eq(child));
-  const target = children[backwards ? i + 1 : i - 1];
+  let idx = backwards ? i + 1 : i - 1;
+  let target = children[idx];
+  while(typeof target?.[1]?.post === 'string') {
+    target = children[backwards ? idx++ : idx--];
+  }
   return target?.[0] || null;
 }
 
-function makeNoteUrl(noteId: number) {
+function makeNoteUrl(noteId: BigInteger) {
   return noteId.toString();
 }
 
 interface NoteNavigationProps {
-  noteId: number;
+  noteId: BigInteger;
   notebook: Graph;
   baseUrl: string;
 }

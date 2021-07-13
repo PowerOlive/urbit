@@ -1,25 +1,19 @@
+import { Box, Center, Col, Row, Text } from '@tlon/indigo-react';
 import React, { ReactElement } from 'react';
-import _ from 'lodash';
-import { useHistory } from 'react-router-dom';
-import { Center, Box, Text, Row, Col } from '@tlon/indigo-react';
-import RichText from '~/views/components/RichText';
-import useSettingsState, { selectCalmState } from '~/logic/state/settings';
-import { Sigil } from '~/logic/lib/sigil';
-import { GroupLink } from '~/views/components/GroupLink';
 import { lengthOrder } from '~/logic/lib/util';
-import useLocalState from '~/logic/state/local';
-import {
-  ProfileHeader,
-  ProfileControls,
-  ProfileActions,
-  ProfileStatus,
-  ProfileImages
-} from './Profile';
 import useContactState from '~/logic/state/contact';
+import useSettingsState, { selectCalmState } from '~/logic/state/settings';
+import { GroupLink } from '~/views/components/GroupLink';
+import RichText from '~/views/components/RichText';
+import {
+  ProfileActions, ProfileControls, ProfileHeader,
+
+  ProfileImages, ProfileStatus
+} from './Profile';
 
 export function ViewProfile(props: any): ReactElement {
   const { hideNicknames } = useSettingsState(selectCalmState);
-  const { api, contact, nacked, ship } = props;
+  const { contact, nacked, ship } = props;
 
   const isPublic = useContactState(state => state.isContactPublic);
 
@@ -31,7 +25,6 @@ export function ViewProfile(props: any): ReactElement {
             ship={ship}
             isPublic={isPublic}
             contact={contact}
-            api={props.api}
           />
           <ProfileStatus contact={contact} />
         </ProfileControls>
@@ -51,7 +44,7 @@ export function ViewProfile(props: any): ReactElement {
           </Text>
         </Center>
       </Row>
-      <Col pb={2} mt='3' alignItems='center' justifyContent='center' width='100%'>
+      <Col pb={2} mt={3} alignItems='center' justifyContent='center' width='100%'>
         <Center flexDirection='column' maxWidth='32rem'>
           <RichText width='100%' disableRemoteContent>
             {contact?.bio ? contact.bio : ''}
@@ -59,12 +52,12 @@ export function ViewProfile(props: any): ReactElement {
         </Center>
       </Col>
       {(contact?.groups || []).length > 0 && (
-        <Col gapY='3' mb='3' mt='6' alignItems='flex-start'>
+        <Col gapY={3} mb={3} mt={6} alignItems='flex-start'>
           <Text gray>Pinned Groups</Text>
           <Col>
-            {contact?.groups.slice().sort(lengthOrder).map((g) => (
+            {contact?.groups.slice().sort(lengthOrder).map((g, i) => (
               <GroupLink
-                api={api}
+                key={i}
                 resource={g}
                 measure={() => {}}
               />
